@@ -112,16 +112,18 @@ int audio_cb(unsigned char *buf_rgb565, int samples, int channels)
 
 static int quit_cb()
 {
-    cont_cond_t cont;
+    maple_device_t *cont;
+    cont_state_t *state;
 
     /* check controller state */
-    if (cont_get_cond(maple_first_controller(), &cont))
+    cont = maple_enum_type(0, MAPLE_FUNC_CONTROLLER);
+    if(!cont)
     {
         /* controller read error */
         return 1;
     }
-    cont.buttons = ~cont.buttons;
-    return (cont.buttons & CONT_START);
+    state = (cont_state_t *)maple_dev_status(cont);
+    return state->buttons & CONT_START;
 }
 
 int finish_cb()
