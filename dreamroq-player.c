@@ -9,6 +9,9 @@
 
 #include "dreamroqlib.h"
 
+extern uint8 romdisk[];
+KOS_INIT_ROMDISK(romdisk);
+
 static pvr_ptr_t textures[2];
 static int current_frame = 0;
 
@@ -144,7 +147,7 @@ int main()
     vid_set_mode(DM_640x480_NTSC_IL, PM_RGB565);
     pvr_init_defaults();
 
-    status = dreamroq_play("/cd/venuscubes.roq", ROQ_RGB565, 1, &cbs);
+    status = dreamroq_play("/rd/roguelogo.roq", ROQ_RGB565, 1, &cbs);
     printf("dreamroq_play() status = %d\n", status);
 
     return 0;

@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+//#include "sh4_math.h"
 #include "dreamroqlib.h"
 
 #define RoQ_INFO           0x1001
@@ -38,6 +39,15 @@ struct roq_audio
      short snd_sqr_array[SQR_ARRAY_SIZE];
      unsigned char pcm_sample[MAX_BUF_SIZE];
 } roq_audio;
+
+struct roq_render_lut
+{
+    short int cr_r_lut[256];
+    short int cb_b_lut[256];
+    short int cr_g_lut[256];
+    short int cb_g_lut[256];
+    short int yy_lut[256];
+} roq_render;
 
 typedef struct
 {
@@ -105,14 +115,14 @@ static int roq_unpack_quad_codebook_rgb565(unsigned char *buf, int size,
         }
         u  = *buf++;
         v  = *buf++;
-
+        
         /* convert to RGB565 */
         for (j = 0; j < 4; j++)
         {
-            yp = (y[j] - 16) * 1.164;
-            r = (yp + 1.596 * (v - 128)) / 8;
-            g = (yp - 0.813 * (v - 128) - 0.391 * (u - 128)) / 4;
-            b = (yp + 2.018 * (u - 128)) / 8;
+            yp = roq_render.yy_lut[y[j]];
+            r = (yp + roq_render.cr_r_lut[v]) >> 3;
+            g = (yp + roq_render.cr_g_lut[v] + roq_render.cb_g_lut[u])>> 2;  
+            b = (yp + roq_render.cb_b_lut[u]) >> 3; 
 
             if (r < 0) r = 0;
             if (r > 31) r = 31;
@@ -196,10 +206,10 @@ static int roq_unpack_quad_codebook_rgba(unsigned char *buf, int size,
         /* convert to RGBA */
         for (j = 0; j < 4; j++)
         {
-            yp = (y[j] - 16) * 1.164;
-            r = (yp + 1.596 * (v - 128));
-            g = (yp - 0.813 * (v - 128) - 0.391 * (u - 128));
-            b = (yp + 2.018 * (u - 128));
+            yp = roq_render.yy_lut[y[j]];
+            r = yp + roq_render.cr_r_lut[v];
+            g = yp + roq_render.cr_g_lut[v] + roq_render.cb_g_lut[u];  
+            b = yp + roq_render.cb_b_lut[u];
 
             if (r < 0) r = 0;
             if (r > 255) r = 255;
@@ -702,6 +712,15 @@ int dreamroq_play(char *filename, int colorspace, int loop,
     {
         roq_audio.snd_sqr_array[i] = i * i;
         roq_audio.snd_sqr_array[i + 128] = -(i * i);
+    }
+
+    for(i = 0; i < 256; i++)
+    {
+        roq_render.cr_r_lut[i] = 1.596 * (i - 128);
+        roq_render.cb_b_lut[i] = 2.018 * (i - 128);
+        roq_render.cr_g_lut[i] = -0.813 * (i - 128);
+        roq_render.cb_g_lut[i] = -0.391 * (i - 128);
+        roq_render.yy_lut[i] = 1.164 * (i - 16);
     }
 
     status = ROQ_SUCCESS;
