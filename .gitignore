@@ -1,4 +1,13 @@
 *.o
-test-dreamroq
+*.elf
 *.pnm
+*.bin
+*.img
+*.dot
+*.jpg
+*.txt
+*.cdi
+test-dreamroq
 roq-audio.wav
+ISO/
+roq\ files/

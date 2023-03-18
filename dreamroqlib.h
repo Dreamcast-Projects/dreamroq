@@ -5,8 +5,12 @@
  * use the Dreamroq playback engine.
  */
 
-#ifndef NEWROQ_H
-#define NEWROQ_H
+#ifndef DREAMROQ_H
+#define DREAMROQ_H
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #define ROQ_SUCCESS           0
 #define ROQ_FILE_OPEN_FAILURE 1
@@ -20,33 +24,58 @@
 #define ROQ_RENDER_PROBLEM    9
 #define ROQ_CLIENT_PROBLEM    10
 
-#define ROQ_RGB565 0
-#define ROQ_RGBA   1
+#define ROQ_BUFFER_DEFAULT_SIZE (64 * 1024)
+
+extern int roq_errno;
+
+// Object types for the various interfaces
+typedef struct roq_t roq_t;
+
+// Create a roq instance with a filename. Returns NULL if the file could not
+// be opened.
+
+roq_t* roq_create_with_filename(const char* filename);
+
+// Create a roq instance with file handle. Pass TRUE to close_when_done
+// to let roq call fclose() on the handle when roq_destroy() is 
+// called.
+
+roq_t* roq_create_with_file(FILE* fh, int close_when_done);
+
+// Create a roq_t instance with pointer to memory as source. This assumes the
+// whole file is in memory. Pass TRUE to free_when_done to let roq call
+// free() on the pointer when roq_destroy() is called.
+
+roq_t* roq_create_with_memory(unsigned char* bytes, size_t length, int free_when_done);
 
 /* The library calls this function when it has a frame ready for display. */
-typedef int (*render_callback)(void *buf, int width, int height,
-    int stride, int texture_height, int colorspace);
+typedef void(*roq_video_decode_callback)
+	(unsigned short *frame_data, int width, int height, int stride, int texture_height);
+void roq_set_video_decode_callback(roq_t *roq, roq_video_decode_callback fp);
 
 /* The library calls this function when it has pcm samples ready for output. */
-typedef int (*audio_callback)(unsigned char *buf, int samples, int channels);
+typedef void(*roq_audio_decode_callback)
+	(unsigned char *audio_frame_data, int size, int channels);
+void roq_set_audio_decode_callback(roq_t *roq, roq_audio_decode_callback fp);
 
-/* The library calls this function to ask whether it should quit playback.
- * Return non-zero if it's time to quit. */
-typedef int (*quit_callback)();
+int roq_get_loop(roq_t* roq);
 
-/* The library calls this function to indicate that playback of the movie is
- * complete. */
-typedef int (*finish_callback)(void);
+void roq_set_loop(roq_t* roq, int loop);
 
-typedef struct
-{
-    render_callback render_cb;
-    audio_callback  audio_cb;
-    quit_callback   quit_cb;
-    finish_callback finish_cb;
-} roq_callbacks_t;
+int roq_decode(roq_t* roq);
 
-int dreamroq_play(char *filename, int colorspace, int loop,
-    roq_callbacks_t *callbacks);
+int roq_get_framerate(roq_t* roq);
 
-#endif  /* NEWROQ_H */
+int roq_get_width(roq_t* roq);
+
+int roq_get_height(roq_t* roq);
+
+int roq_has_ended(roq_t* roq);
+
+void roq_destroy(roq_t* roq);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif  /* DREAMROQ_H */
