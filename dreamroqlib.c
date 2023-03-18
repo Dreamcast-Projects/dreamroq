@@ -11,7 +11,6 @@
 #include <malloc.h>
 
 #include "dreamroqlib.h"
-#include "memory.h"
 
 #ifndef TRUE
 #define TRUE 1
@@ -375,7 +374,7 @@ void roq_destroy(roq_t* roq) {
         free (roq->frame[1]);
     }
 
-	FREE(roq);
+	free(roq);
     roq = NULL;
 }
 
@@ -399,7 +398,7 @@ static roq_t* roq_create_with_buffer(roq_buffer_t* buffer) {
     int i = 0;
     roq_chunk_t header;
     unsigned char* read_buffer;
-    roq_t* roq = (roq_t*)MALLOC(sizeof(roq_t));
+    roq_t* roq = (roq_t*)malloc(sizeof(roq_t));
     memset(roq, 0, sizeof(roq_t));
 
     roq->loop = FALSE;
@@ -485,8 +484,8 @@ static roq_t* roq_create_with_buffer(roq_buffer_t* buffer) {
                 roq->width, roq->height, roq->mb_width, roq->mb_height,
                 roq->mb_count, roq->stride, roq->texture_height);
 
-            roq->frame[0] = (unsigned short*)MEMALIGN(32, roq->texture_height * roq->stride * sizeof(unsigned short));
-            roq->frame[1] = (unsigned short*)MEMALIGN(32, roq->texture_height * roq->stride * sizeof(unsigned short));
+            roq->frame[0] = (unsigned short*)memalign(32, roq->texture_height * roq->stride * sizeof(unsigned short));
+            roq->frame[1] = (unsigned short*)memalign(32, roq->texture_height * roq->stride * sizeof(unsigned short));
             
             if (!roq->frame[0] || !roq->frame[1]) {
                 roq_destroy(roq);
@@ -527,7 +526,7 @@ static roq_buffer_t* roq_buffer_create_with_file(FILE* fh, int close_when_done) 
 }
 
 static roq_buffer_t* roq_buffer_create_with_memory(unsigned char* bytes, size_t capacity, int free_when_done) {
-	roq_buffer_t* buffer = (roq_buffer_t*)MALLOC(sizeof(roq_buffer_t));
+	roq_buffer_t* buffer = (roq_buffer_t*)malloc(sizeof(roq_buffer_t));
 	memset(buffer, 0, sizeof(roq_buffer_t));
     buffer->bytes = bytes;
 	buffer->capacity = capacity;
@@ -539,11 +538,11 @@ static roq_buffer_t* roq_buffer_create_with_memory(unsigned char* bytes, size_t 
 }
 
 static roq_buffer_t* roq_buffer_create_with_capacity(size_t capacity) {
-	roq_buffer_t* buffer = (roq_buffer_t*)MALLOC(sizeof(roq_buffer_t));
+	roq_buffer_t* buffer = (roq_buffer_t*)malloc(sizeof(roq_buffer_t));
 	memset(buffer, 0, sizeof(roq_buffer_t));
 	buffer->capacity = capacity;
 	buffer->free_when_done = TRUE;
-	buffer->bytes = (unsigned char*)MALLOC(capacity);
+	buffer->bytes = (unsigned char*)malloc(capacity);
 	buffer->mode = ROQ_BUFFER_MODE_DYNAMIC_MEM;
 	return buffer;
 }
@@ -612,10 +611,10 @@ static void roq_buffer_destroy(roq_buffer_t* buffer) {
 	}
 
 	if (buffer->free_when_done) {
-		FREE(buffer->bytes);
+		free(buffer->bytes);
 	}
 
-	FREE(buffer);
+	free(buffer);
     buffer = NULL;
 }
 

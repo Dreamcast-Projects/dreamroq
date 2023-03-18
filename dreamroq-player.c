@@ -7,7 +7,6 @@
 
 #include "kos.h"
 #include "dreamroqlib.h"
-#include "profiler.h"
 
 #define DC_CACHE_SIZE 16*1024 // DC cache size 16 KB
 
@@ -215,8 +214,6 @@ int main()
 
     // All done
     roq_destroy(roq);
-
-    shutdownProfiling();
 
     pvr_shutdown(); 
     

@@ -4,7 +4,7 @@ TARGET = dreamroq-player.elf
 TARGET_BIN = dreamroq-player.bin
 
 # Set compiler flags
-KOS_CFLAGS += -g -finstrument-functions
+#KOS_CFLAGS += -g -finstrument-functions
 
 # List all of your C files here, but change the extension to ".o"
 OBJS = dreamroqlib.o dreamroq-player.o
