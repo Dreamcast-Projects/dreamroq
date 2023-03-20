@@ -12,6 +12,8 @@
 extern "C" {
 #endif
 
+#include <stdio.h>
+
 #define ROQ_SUCCESS           0
 #define ROQ_FILE_OPEN_FAILURE 1
 #define ROQ_FILE_READ_FAILURE 2

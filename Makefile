@@ -7,7 +7,7 @@ TARGET_BIN = dreamroq-player.bin
 #KOS_CFLAGS += -g -finstrument-functions
 
 # List all of your C files here, but change the extension to ".o"
-OBJS = dreamroqlib.o dreamroq-player.o
+OBJS = dreamroqlib.o main.o roq-player.o
 
 all: rm-elf $(TARGET)
 
