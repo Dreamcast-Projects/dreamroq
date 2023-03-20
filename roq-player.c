@@ -70,9 +70,6 @@ static uint64_t dc_get_time();
 static void frame_delay();
 
 int player_init() {
-    printf("Entering INIT\n");
-    fflush(stdout);
-
     snd_stream_init();
     pvr_init_defaults();
 
@@ -497,7 +494,6 @@ static void* player_snd_thread() {
     return NULL;
 }
 
-/* Get current hardware timing using arch/timer.h */
 uint64_t dc_get_time() {
     uint32_t s, ms;
 	uint64_t msec;
@@ -508,7 +504,6 @@ uint64_t dc_get_time() {
 	return msec;
 }
 
-/* Delay the frame to match Frame Rate */
 static void frame_delay() {
     uint64_t CPU_real_time = dc_get_time() - last_time;         
     while(CPU_real_time < ms_per_frame) {
