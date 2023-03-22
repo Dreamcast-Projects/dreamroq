@@ -75,6 +75,8 @@ int roq_has_ended(roq_t* roq);
 
 void roq_destroy(roq_t* roq);
 
+void roq_rewind(roq_t* roq);
+
 #ifdef __cplusplus
 }
 #endif

@@ -378,16 +378,16 @@ void roq_destroy(roq_t* roq) {
     roq = NULL;
 }
 
-static void roq_rewind(roq_t* roq) {
+void roq_rewind(roq_t* roq) {
     roq->frame_index = 0;
     roq->current_frame = 0;
-    roq->has_ended = FALSE;
     roq_buffer_set_offset(roq->buffer, CHUNK_HEADER_SIZE, SEEK_SET);
 }
 
 static void roq_handle_end(roq_t* roq) {
 	if (roq->loop) {
 		roq_rewind(roq);
+        roq->has_ended = FALSE;
 	}
 	else {
 		roq->has_ended = TRUE;
