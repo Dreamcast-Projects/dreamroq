@@ -406,7 +406,7 @@ static int initialize_graphics(int width, int height) {
 
     vid_stream.initialized = 1;
 
-    last_time = dc_get_time();
+    /*last_time = dc_get_time(); */
 
     return SUCCESS;
 }
@@ -454,6 +454,7 @@ static void* player_snd_thread() {
     return NULL;
 }
 
+/*
 uint64_t dc_get_time() {
     uint32_t s, ms;
 	uint64_t msec;
@@ -464,7 +465,6 @@ uint64_t dc_get_time() {
 	return msec;
 }
 
-/* For some reason this give horrible performance */
 static void frame_delay() {
     uint64_t CPU_real_time = dc_get_time() - last_time;
 
@@ -474,6 +474,7 @@ static void frame_delay() {
     }
     last_time = dc_get_time();
 }
+*/
 
 static void initialize_defaults(format_player_t* player, int index) {
     roq_set_video_decode_callback(player->format, roq_video_cb);

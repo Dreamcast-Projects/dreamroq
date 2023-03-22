@@ -32,7 +32,7 @@ int main()
     vid_set_mode(DM_640x480_NTSC_IL, PM_RGB565);
 
     player_init();
-    format_player_t* player = player_create("/cd/saintro.roq");
+    format_player_t* player = player_create("/rd/roguelogo.roq");
     //player_set_loop(player, 0);
     player_play(player, frame_cb);
 
