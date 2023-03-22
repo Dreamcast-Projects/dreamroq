@@ -65,13 +65,6 @@ static void roq_audio_cb(unsigned char *buf, int size, int channels);
 
 static void initialize_defaults(format_player_t* player, int index);
 
-/*
-static float ms_per_frame = 33.3f;
-static uint64_t last_time;
-static uint64_t dc_get_time();
-static void frame_delay();
-*/
-
 static kthread_t* thread;
 
 int player_init() {
@@ -231,10 +224,6 @@ format_player_t* player_create_buf(unsigned char* buf, const unsigned int length
     return player;
 }
 
-// void player_decode(format_player_t* format_player) {
-//    format_decode(format_player->format);
-// }
-
 void player_play(format_player_t* format_player, frame_callback frame_cb) {
     if(snd_stream.status == SND_STREAM_STATUS_STREAMING)
        return;
@@ -246,7 +235,7 @@ void player_play(format_player_t* format_player, frame_callback frame_cb) {
             frame_cb();
 
         roq_decode(format_player->format);
-    } while (//!roq_has_ended(format_player->format) && 
+    } while (!roq_has_ended(format_player->format) && 
             (snd_stream.status == SND_STREAM_STATUS_STREAMING ||
              snd_stream.status == SND_STREAM_STATUS_RESUMING));
 }
@@ -301,9 +290,7 @@ static void roq_video_cb(unsigned short *texture_data, int width, int height, in
 
     pvr_txr_load(texture_data, vid_stream.textures[vid_stream.current_frame], stride * texture_height * 2);
 
-    /* frame_delay();
-    *  No need to frame_delay() if we just dubble render the 30fps video to make it 60fps
-    */
+    /* Dubble render the 30fps video to make it 60fps */
     for (int i = 0; i < 2; i++) {
         pvr_wait_ready();
         pvr_scene_begin();
@@ -368,7 +355,6 @@ static int initialize_graphics(int width, int height) {
     pvr_poly_cxt_txr(&cxt, PVR_LIST_OP_POLY, PVR_TXRFMT_RGB565 | PVR_TXRFMT_NONTWIDDLED, width, height, vid_stream.textures[1], PVR_FILTER_BILINEAR);
     pvr_poly_compile(&vid_stream.hdr[1], &cxt);
     
-    /* Things common to vertices */
     vid_stream.vert[0].z     = vid_stream.vert[1].z     = vid_stream.vert[2].z     = vid_stream.vert[3].z     = 1.0f; 
     vid_stream.vert[0].argb  = vid_stream.vert[1].argb  = vid_stream.vert[2].argb  = vid_stream.vert[3].argb  = PVR_PACK_COLOR(1.0f, 1.0f, 1.0f, 1.0f);    
     vid_stream.vert[0].oargb = vid_stream.vert[1].oargb = vid_stream.vert[2].oargb = vid_stream.vert[3].oargb = 0;  
@@ -405,8 +391,6 @@ static int initialize_graphics(int width, int height) {
     vid_stream.vert[3].v = 1.0;
 
     vid_stream.initialized = 1;
-
-    /*last_time = dc_get_time(); */
 
     return SUCCESS;
 }
@@ -453,28 +437,6 @@ static void* player_snd_thread() {
 
     return NULL;
 }
-
-/*
-uint64_t dc_get_time() {
-    uint32_t s, ms;
-	uint64_t msec;
-
-	timer_ms_gettime(&s, &ms);
-	msec = (((uint64)s) * ((uint64)1000)) + ((uint64)ms);
-
-	return msec;
-}
-
-static void frame_delay() {
-    uint64_t CPU_real_time = dc_get_time() - last_time;
-
-    while(CPU_real_time < ms_per_frame) {
-        thd_pass();
-        CPU_real_time = dc_get_time() - last_time;
-    }
-    last_time = dc_get_time();
-}
-*/
 
 static void initialize_defaults(format_player_t* player, int index) {
     roq_set_video_decode_callback(player->format, roq_video_cb);
