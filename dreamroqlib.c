@@ -212,7 +212,6 @@ int roq_decode(roq_t* roq) {
                     roq_buffer_set_offset(roq->buffer, header.chunk_size, SEEK_CUR);
                     break;
                 case RoQ_QUAD_CODEBOOK:
-                    fflush(stdout);
                     if(!decode_video) {
                         roq_buffer_set_offset(roq->buffer, header.chunk_size, SEEK_CUR);
                     }
@@ -413,7 +412,7 @@ static roq_t* roq_create_with_buffer(roq_buffer_t* buffer) {
         roq->snd_sqr_array[i + 128] = -(roq->snd_sqr_array[i]);
     }
 
-    // Initialize YUV420 -> RGB Math Look-Up Table
+    // Initialize YUV420 -> RGB Math Look-Up Table helpers
     for(i = 0; i < 256; i++) {
         roq->yy_lut[i] = 1.164 * (i - 16);
         roq->cr_r_lut[i] = 1.596 * (i - 128);

@@ -60,29 +60,23 @@ static void* aica_callback(snd_stream_hnd_t hnd, int req, int* done);
 static int initialize_graphics(int width, int height);
 static int initialize_audio();
 
-// The blueprint of these callbacks can be different depending on the format
 static void roq_video_cb(unsigned short *buf, int width, int height, int stride, int texture_height);
 static void roq_audio_cb(unsigned char *buf, int size, int channels);
 
 static void initialize_defaults(format_player_t* player, int index);
 
+/*
 static float ms_per_frame = 33.3f;
 static uint64_t last_time;
 static uint64_t dc_get_time();
 static void frame_delay();
-static int render_twice = 0;
+*/
 
 static kthread_t* thread;
 
 int player_init() {
     snd_stream_init();
     pvr_init_defaults();
-
-    // if(snd_stream_init() < 0)
-	// 	return ERROR;
-
-    // if(pvr_init_defaults() < 0)
-    //      return ERROR;
 
     snd_stream.shnd = SND_STREAM_INVALID;
     snd_stream.vol = 240;
@@ -91,7 +85,6 @@ int player_init() {
 
     thread = thd_create(0, player_snd_thread, NULL);
     if(thread != NULL) {
-        //thd_set_prio(thread, PRIO_DEFAULT / 2);
 		snd_stream.status = SND_STREAM_STATUS_READY;
         return SUCCESS;
 	}
@@ -256,9 +249,6 @@ void player_play(format_player_t* format_player, frame_callback frame_cb) {
     } while (//!roq_has_ended(format_player->format) && 
             (snd_stream.status == SND_STREAM_STATUS_STREAMING ||
              snd_stream.status == SND_STREAM_STATUS_RESUMING));
-
-    // if(format_has_ended(format_player->format))
-    //     player_shutdown(format_player->format);
 }
 
 void player_pause(format_player_t* format_player) {
@@ -309,11 +299,11 @@ int player_has_ended(format_player_t* format_player) {
 
 static void roq_video_cb(unsigned short *texture_data, int width, int height, int stride, int texture_height) {
 
-    /* send the video frame as a texture over to video RAM */
     pvr_txr_load(texture_data, vid_stream.textures[vid_stream.current_frame], stride * texture_height * 2);
 
-    //frame_delay();
-    // No need to frame_delay() if we just dubble render the 30fps video to make it 60fps
+    /* frame_delay();
+    *  No need to frame_delay() if we just dubble render the 30fps video to make it 60fps
+    */
     for (int i = 0; i < 2; i++) {
         pvr_wait_ready();
         pvr_scene_begin();
@@ -336,7 +326,6 @@ static void roq_audio_cb(unsigned char *audio_data, int data_length, int channel
 
     snd_stream.channels = channels;
 
-    /* Copy the decoded PCM samples to our local PCM buffer */
     mutex_lock(&snd_stream.decode_buffer_mut);         
 
     memcpy(snd_stream.decode_buffer + snd_stream.pcm_size, audio_data, data_length);
@@ -345,13 +334,11 @@ static void roq_audio_cb(unsigned char *audio_data, int data_length, int channel
     mutex_unlock(&snd_stream.decode_buffer_mut);
 }
 
-// When we call snd_stream_poll(), it calls this callback
 static void* aica_callback(snd_stream_hnd_t hnd, int bytes_needed, int* bytes_returning) {
-    /* Wait for Format Decoder to produce enough samples */
+    
     while(snd_stream.pcm_size < bytes_needed)
         thd_pass();
-
-    /* Copy the Requested PCM Samples to the AICA Driver */         
+       
     mutex_lock(&snd_stream.decode_buffer_mut);
 
     memcpy(snd_stream.pcm_buffer, snd_stream.decode_buffer, bytes_needed);
@@ -376,15 +363,10 @@ static int initialize_graphics(int width, int height) {
 
     pvr_poly_cxt_t cxt;
 
-    /* Precompile the poly headers */
     pvr_poly_cxt_txr(&cxt, PVR_LIST_OP_POLY, PVR_TXRFMT_RGB565 | PVR_TXRFMT_NONTWIDDLED, width, height, vid_stream.textures[0], PVR_FILTER_BILINEAR);
     pvr_poly_compile(&vid_stream.hdr[0], &cxt);
     pvr_poly_cxt_txr(&cxt, PVR_LIST_OP_POLY, PVR_TXRFMT_RGB565 | PVR_TXRFMT_NONTWIDDLED, width, height, vid_stream.textures[1], PVR_FILTER_BILINEAR);
     pvr_poly_compile(&vid_stream.hdr[1], &cxt);
-
-    float ratio;
-    /* screen coordinates of upper left and bottom right corners */
-    int ul_x, ul_y, br_x, br_y;
     
     /* Things common to vertices */
     vid_stream.vert[0].z     = vid_stream.vert[1].z     = vid_stream.vert[2].z     = vid_stream.vert[3].z     = 1.0f; 
@@ -392,6 +374,9 @@ static int initialize_graphics(int width, int height) {
     vid_stream.vert[0].oargb = vid_stream.vert[1].oargb = vid_stream.vert[2].oargb = vid_stream.vert[3].oargb = 0;  
     vid_stream.vert[0].flags = vid_stream.vert[1].flags = vid_stream.vert[2].flags = PVR_CMD_VERTEX;         
     vid_stream.vert[3].flags = PVR_CMD_VERTEX_EOL;
+
+    float ratio;
+    int ul_x, ul_y, br_x, br_y;
 
     ratio = 640.0 / width;
     ul_x = 0;
@@ -430,12 +415,10 @@ static int initialize_audio() {
     if(snd_stream.initialized)
         return SUCCESS;
 
-    /* allocate PCM buffer */
     snd_stream.decode_buffer = malloc(STREAM_BUFFER_SIZE);
     if(snd_stream.decode_buffer == NULL)
         return OUT_OF_MEMORY;
     
-    /* Create a mutex to handle the double-threaded buffer */
     mutex_init(&snd_stream.decode_buffer_mut, MUTEX_TYPE_NORMAL);
 
     snd_stream.initialized = 1;
@@ -481,7 +464,7 @@ uint64_t dc_get_time() {
 	return msec;
 }
 
-// For some reason this give horrible performance
+/* For some reason this give horrible performance */
 static void frame_delay() {
     uint64_t CPU_real_time = dc_get_time() - last_time;
 

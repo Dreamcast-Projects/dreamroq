@@ -1,5 +1,5 @@
-#ifndef FORMATPLAYER_H
-#define FORMATPLAYER_H
+#ifndef ROQPLAYER_H
+#define ROQPLAYER_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -17,8 +17,9 @@ extern "C" {
 
 extern int player_errno;
 
-/* The library calls this function to ask whether it should quit playback.
- * Return non-zero if it's time to quite. */
+/* The library call this method after decoding a frame of video/audio.
+*  You can add controller input code to callback so you react to controller
+*  input while the video is playing. */
 typedef void (*frame_callback)();
 
 typedef struct format_player_t format_player_t;

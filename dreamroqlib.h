@@ -30,7 +30,6 @@ extern "C" {
 
 extern int roq_errno;
 
-// Object types for the various interfaces
 typedef struct roq_t roq_t;
 
 // Create a roq instance with a filename. Returns NULL if the file could not
@@ -50,12 +49,12 @@ roq_t* roq_create_with_file(FILE* fh, int close_when_done);
 
 roq_t* roq_create_with_memory(unsigned char* bytes, size_t length, int free_when_done);
 
-/* The library calls this function when it has a frame ready for display. */
+// The library calls this function when it has a frame ready for display.
 typedef void(*roq_video_decode_callback)
 	(unsigned short *frame_data, int width, int height, int stride, int texture_height);
 void roq_set_video_decode_callback(roq_t *roq, roq_video_decode_callback fp);
 
-/* The library calls this function when it has pcm samples ready for output. */
+// The library calls this function when it has pcm samples ready for output.
 typedef void(*roq_audio_decode_callback)
 	(unsigned char *audio_frame_data, int size, int channels);
 void roq_set_audio_decode_callback(roq_t *roq, roq_audio_decode_callback fp);
