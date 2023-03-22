@@ -1,7 +1,8 @@
-
+#include <dc/pvr.h>
 #include <dc/maple.h>
 #include <dc/maple/controller.h>
 
+//#include "profiler.h"
 #include "roq-player.h"
 
 extern uint8 romdisk[];
@@ -17,8 +18,11 @@ static void frame_cb() {
         state = (cont_state_t *)maple_dev_status(dev);
 
         if(state)   {
-            if(state->buttons)
+            if(state->buttons) {
+                //shutdownProfiling();
                 arch_exit();
+            }
+                
         }
     }
 }
@@ -26,12 +30,15 @@ static void frame_cb() {
 int main()
 {
     vid_set_mode(DM_640x480_NTSC_IL, PM_RGB565);
-    pvr_init_defaults();
 
     player_init();
-    format_player_t* player = player_create("/rd/roguelogo.roq", 1);
-
+    format_player_t* player = player_create("/cd/saintro.roq");
+    //player_set_loop(player, 0);
     player_play(player, frame_cb);
+
+    player_shutdown(player);
+
+    //shutdownProfiling();
     
     // Decode
     // do {

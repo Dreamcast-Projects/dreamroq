@@ -174,13 +174,6 @@ int roq_decode(roq_t* roq) {
 		return FALSE;
 	}
 
-    roq_chunk_t header;
-    int video_ended = FALSE;
-    int audio_ended = FALSE;
-    
-	int video_decoded = FALSE;
-	int audio_decoded = FALSE;
-
     if(roq_eof(roq->buffer)) {
         roq_handle_end(roq);
     }
@@ -188,6 +181,13 @@ int roq_decode(roq_t* roq) {
     if(roq->has_ended) {
         return FALSE;
     }
+
+    roq_chunk_t header;
+    int video_ended = FALSE;
+    int audio_ended = FALSE;
+    
+	int video_decoded = FALSE;
+	int audio_decoded = FALSE;
     
     do {
         if(!roq_eof(roq->buffer))
@@ -212,6 +212,7 @@ int roq_decode(roq_t* roq) {
                     roq_buffer_set_offset(roq->buffer, header.chunk_size, SEEK_CUR);
                     break;
                 case RoQ_QUAD_CODEBOOK:
+                    fflush(stdout);
                     if(!decode_video) {
                         roq_buffer_set_offset(roq->buffer, header.chunk_size, SEEK_CUR);
                     }
@@ -302,7 +303,7 @@ int roq_decode(roq_t* roq) {
                             roq_errno = ROQ_FILE_READ_FAILURE;
                             return FALSE;
                         }
-
+                        
                         unsigned char* read_buffer = roq_buffer_get_data(roq->buffer);
 
                         // Decode audio
@@ -414,11 +415,11 @@ static roq_t* roq_create_with_buffer(roq_buffer_t* buffer) {
 
     // Initialize YUV420 -> RGB Math Look-Up Table
     for(i = 0; i < 256; i++) {
-        roq->cr_r_lut[i] = 1.596 * (i - 128);
-        roq->cb_b_lut[i] = 2.018 * (i - 128);
-        roq->cr_g_lut[i] = -0.813 * (i - 128);
-        roq->cb_g_lut[i] = -0.391 * (i - 128);
         roq->yy_lut[i] = 1.164 * (i - 16);
+        roq->cr_r_lut[i] = 1.596 * (i - 128);
+        roq->cb_b_lut[i] = 2.017 * (i - 128);
+        roq->cr_g_lut[i] = -0.813 * (i - 128);
+        roq->cb_g_lut[i] = -0.392 * (i - 128);
     }
 
     // Check if it has the ROQ signature header
@@ -667,30 +668,27 @@ static int roq_unpack_quad_codebook(roq_t* roq, unsigned char *buf, int size, in
     /* unpack the 2x2 vectors */
     for (i = 0; i < count2x2; i++) {
         /* unpack the YUV components from the bytestream */
-        for (j = 0; j < 4; j++) {
-            y[j] = *buf++;
-        }
+        y[0] = *buf++;
+        y[1] = *buf++;
+        y[2] = *buf++;
+        y[3] = *buf++;
         u  = *buf++;
         v  = *buf++;
         
         /* convert to RGB565 */
         for (j = 0; j < 4; j++) {
             yp = roq->yy_lut[y[j]];
-            r = (yp + roq->cr_r_lut[v]) >> 3;
-            g = (yp + roq->cr_g_lut[v] + roq->cb_g_lut[u])>> 2;  
-            b = (yp + roq->cb_b_lut[u]) >> 3; 
+            r = yp + roq->cr_r_lut[v];
+            g = yp + roq->cr_g_lut[v] + roq->cb_g_lut[u];  
+            b = yp + roq->cb_b_lut[u]; 
 
-            if (r < 0) r = 0;
-            if (r > 31) r = 31;
-            if (g < 0) g = 0;
-            if (g > 63) g = 63;
-            if (b < 0) b = 0;
-            if (b > 31) b = 31;
+            r = (r < 0) ? 0 : ((r > 255) ? 255 : r);
+            g = (g < 0) ? 0 : ((g > 255) ? 255 : g);
+            b = (b < 0) ? 0 : ((b > 255) ? 255 : b);
 
-            roq->cb2x2_rgb565[i][j] = (
-                (r << 11) | 
-                (g <<  5) |
-                (b <<  0) );
+            roq->cb2x2_rgb565[i][j] = ((unsigned short)r & 0xf8) << 8 | 
+                                      ((unsigned short)g & 0xfc) << 3 | 
+                                      ((unsigned short)b & 0xf8) >> 3;
         }
     }
 
@@ -765,7 +763,7 @@ static unsigned short* roq_unpack_vq(roq_t* roq, unsigned char* buf, int size, u
     mx = (signed char)(arg >> 8);
     my = (signed char)arg;
 
-    if (roq->frame_index == 1) {
+    if (roq->frame_index) {
         roq->frame_index = 0;
         this_frame = (unsigned short*)roq->frame[1];
         last_frame = (unsigned short*)roq->frame[0];

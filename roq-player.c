@@ -64,10 +64,15 @@ static int initialize_audio();
 static void roq_video_cb(unsigned short *buf, int width, int height, int stride, int texture_height);
 static void roq_audio_cb(unsigned char *buf, int size, int channels);
 
+static void initialize_defaults(format_player_t* player, int index);
+
 static float ms_per_frame = 33.3f;
 static uint64_t last_time;
 static uint64_t dc_get_time();
 static void frame_delay();
+static int render_twice = 0;
+
+static kthread_t* thread;
 
 int player_init() {
     snd_stream_init();
@@ -84,7 +89,9 @@ int player_init() {
     snd_stream.rate = 22050;
     snd_stream.status = SND_STREAM_STATUS_NULL;
 
-    if(thd_create(0, player_snd_thread, NULL) != NULL) {
+    thread = thd_create(0, player_snd_thread, NULL);
+    if(thread != NULL) {
+        //thd_set_prio(thread, PRIO_DEFAULT / 2);
 		snd_stream.status = SND_STREAM_STATUS_READY;
         return SUCCESS;
 	}
@@ -97,6 +104,8 @@ int player_init() {
 void player_shutdown(format_player_t* format_player) {
     snd_stream.status = SND_STREAM_STATUS_DONE;
 
+    thd_join(thread, NULL);
+
     if(snd_stream.shnd != SND_STREAM_INVALID) {
         snd_stream_stop(snd_stream.shnd);
         snd_stream_destroy(snd_stream.shnd);
@@ -106,11 +115,13 @@ void player_shutdown(format_player_t* format_player) {
     }
 
     if(vid_stream.initialized) {
+        vid_stream.initialized = 0;
         pvr_mem_free(vid_stream.textures[0]);
         pvr_mem_free(vid_stream.textures[1]);
     }
 
     if(snd_stream.initialized) {
+        snd_stream.initialized = 0;
         free(snd_stream.decode_buffer);
         mutex_destroy(&snd_stream.decode_buffer_mut); 
     }
@@ -119,7 +130,7 @@ void player_shutdown(format_player_t* format_player) {
         roq_destroy(format_player->format);
 }
 
-format_player_t* player_create(const char* filename, int loop) {
+format_player_t* player_create(const char* filename) {
     snd_stream_hnd_t index;
     format_player_t* player = NULL;
     
@@ -128,7 +139,7 @@ format_player_t* player_create(const char* filename, int loop) {
         return NULL;
     }
 
-    index = snd_stream_alloc(aica_callback, SND_STREAM_BUFFER_MAX/4);
+    index = snd_stream_alloc(aica_callback, SND_STREAM_BUFFER_MAX/2);
 
     if(index == SND_STREAM_INVALID) {
         snd_stream_destroy(index);
@@ -150,22 +161,12 @@ format_player_t* player_create(const char* filename, int loop) {
         return NULL;
     }
 
-    roq_set_video_decode_callback(player->format, roq_video_cb);
-    roq_set_audio_decode_callback(player->format, roq_audio_cb);
-    roq_set_loop(player->format, loop);
-
-    snd_stream.shnd = index;
-    snd_stream.status = SND_STREAM_STATUS_READY;
-
-    player->initialized_format = 1;
-
-    initialize_graphics(roq_get_width(player->format), roq_get_height(player->format));
-    initialize_audio();
+    initialize_defaults(player, index);
 
     return player;
 }
 
-format_player_t* player_create_fd(FILE* file, int loop) {
+format_player_t* player_create_fd(FILE* file) {
     snd_stream_hnd_t index;
     format_player_t* player = NULL;
 
@@ -174,7 +175,7 @@ format_player_t* player_create_fd(FILE* file, int loop) {
         return NULL;
     }
     
-    index = snd_stream_alloc(aica_callback, SND_STREAM_BUFFER_MAX/4);
+    index = snd_stream_alloc(aica_callback, SND_STREAM_BUFFER_MAX/2);
 
     if(index == SND_STREAM_INVALID) {
         snd_stream_destroy(index);
@@ -196,26 +197,16 @@ format_player_t* player_create_fd(FILE* file, int loop) {
         return NULL;
     }
 
-    roq_set_video_decode_callback(player->format, roq_video_cb);
-    roq_set_audio_decode_callback(player->format, roq_audio_cb);
-    roq_set_loop(player->format, loop);
-
-    snd_stream.shnd = index;
-    snd_stream.status = SND_STREAM_STATUS_READY;
-
-    player->initialized_format = 1;
-
-    initialize_graphics(roq_get_width(player->format), roq_get_height(player->format));
-    initialize_audio();
+    initialize_defaults(player, index);
 
     return player;
 }
 
-format_player_t* player_create_buf(const unsigned char* buf, const unsigned int length, int loop) {
+format_player_t* player_create_buf(unsigned char* buf, const unsigned int length) {
     snd_stream_hnd_t index;
     format_player_t* player = NULL;
 
-    index = snd_stream_alloc(aica_callback, SND_STREAM_BUFFER_MAX/4);
+    index = snd_stream_alloc(aica_callback, SND_STREAM_BUFFER_MAX/2);
 
     if(buf == NULL) {
         player_errno = SOURCE_ERROR;
@@ -242,17 +233,7 @@ format_player_t* player_create_buf(const unsigned char* buf, const unsigned int 
         return NULL;
     }
 
-    roq_set_video_decode_callback(player->format, roq_video_cb);
-    roq_set_audio_decode_callback(player->format, roq_audio_cb);
-    roq_set_loop(player->format, loop);
-
-    snd_stream.shnd = index;
-    snd_stream.status = SND_STREAM_STATUS_READY;
-
-    player->initialized_format = 1;
-
-    initialize_graphics(roq_get_width(player->format), roq_get_height(player->format));
-    initialize_audio();
+    initialize_defaults(player, index);
 
     return player;
 }
@@ -272,7 +253,7 @@ void player_play(format_player_t* format_player, frame_callback frame_cb) {
             frame_cb();
 
         roq_decode(format_player->format);
-    } while (!roq_has_ended(format_player->format) && 
+    } while (//!roq_has_ended(format_player->format) && 
             (snd_stream.status == SND_STREAM_STATUS_STREAMING ||
              snd_stream.status == SND_STREAM_STATUS_RESUMING));
 
@@ -327,28 +308,28 @@ int player_has_ended(format_player_t* format_player) {
 }
 
 static void roq_video_cb(unsigned short *texture_data, int width, int height, int stride, int texture_height) {
-    unsigned short *buf = texture_data;
 
     /* send the video frame as a texture over to video RAM */
-    pvr_txr_load(buf, vid_stream.textures[vid_stream.current_frame], stride * texture_height * 2);
+    pvr_txr_load(texture_data, vid_stream.textures[vid_stream.current_frame], stride * texture_height * 2);
 
-    frame_delay();
+    //frame_delay();
+    // No need to frame_delay() if we just dubble render the 30fps video to make it 60fps
+    for (int i = 0; i < 2; i++) {
+        pvr_wait_ready();
+        pvr_scene_begin();
+        pvr_list_begin(PVR_LIST_OP_POLY);
 
-    pvr_wait_ready();
-    pvr_scene_begin();
-    pvr_list_begin(PVR_LIST_OP_POLY);
+        pvr_prim(&vid_stream.hdr[vid_stream.current_frame], sizeof(pvr_poly_hdr_t));
+        pvr_prim(&vid_stream.vert[0], sizeof(pvr_vertex_t));
+        pvr_prim(&vid_stream.vert[1], sizeof(pvr_vertex_t));
+        pvr_prim(&vid_stream.vert[2], sizeof(pvr_vertex_t));
+        pvr_prim(&vid_stream.vert[3], sizeof(pvr_vertex_t));
 
-    pvr_prim(&vid_stream.hdr[vid_stream.current_frame], sizeof(pvr_poly_hdr_t));
-    pvr_prim(&vid_stream.vert[0], sizeof(pvr_vertex_t));
-    pvr_prim(&vid_stream.vert[1], sizeof(pvr_vertex_t));
-    pvr_prim(&vid_stream.vert[2], sizeof(pvr_vertex_t));
-    pvr_prim(&vid_stream.vert[3], sizeof(pvr_vertex_t));
-
-    pvr_list_finish();
-    pvr_scene_finish();
+        pvr_list_finish();
+        pvr_scene_finish();
+    }
 
     vid_stream.current_frame = !vid_stream.current_frame;
-    last_time = dc_get_time();
 }
 
 static void roq_audio_cb(unsigned char *audio_data, int data_length, int channels) {
@@ -366,7 +347,6 @@ static void roq_audio_cb(unsigned char *audio_data, int data_length, int channel
 
 // When we call snd_stream_poll(), it calls this callback
 static void* aica_callback(snd_stream_hnd_t hnd, int bytes_needed, int* bytes_returning) {
-
     /* Wait for Format Decoder to produce enough samples */
     while(snd_stream.pcm_size < bytes_needed)
         thd_pass();
@@ -382,11 +362,10 @@ static void* aica_callback(snd_stream_hnd_t hnd, int bytes_needed, int* bytes_re
 
     *bytes_returning = bytes_needed;
 
-    return snd_stream.pcm_buffer; /* Return the requested samples to the AICA driver */
+    return snd_stream.pcm_buffer;
 }
 
-static int initialize_graphics(int width, int height) 
-{
+static int initialize_graphics(int width, int height) {
     if(vid_stream.initialized)
         return SUCCESS;
 
@@ -398,28 +377,27 @@ static int initialize_graphics(int width, int height)
     pvr_poly_cxt_t cxt;
 
     /* Precompile the poly headers */
-    pvr_poly_cxt_txr(&cxt, PVR_LIST_OP_POLY, PVR_TXRFMT_RGB565 | PVR_TXRFMT_NONTWIDDLED, width, height, vid_stream.textures[0], PVR_FILTER_NONE);
+    pvr_poly_cxt_txr(&cxt, PVR_LIST_OP_POLY, PVR_TXRFMT_RGB565 | PVR_TXRFMT_NONTWIDDLED, width, height, vid_stream.textures[0], PVR_FILTER_BILINEAR);
     pvr_poly_compile(&vid_stream.hdr[0], &cxt);
-    pvr_poly_cxt_txr(&cxt, PVR_LIST_OP_POLY, PVR_TXRFMT_RGB565 | PVR_TXRFMT_NONTWIDDLED, width, height, vid_stream.textures[1], PVR_FILTER_NONE);
+    pvr_poly_cxt_txr(&cxt, PVR_LIST_OP_POLY, PVR_TXRFMT_RGB565 | PVR_TXRFMT_NONTWIDDLED, width, height, vid_stream.textures[1], PVR_FILTER_BILINEAR);
     pvr_poly_compile(&vid_stream.hdr[1], &cxt);
 
     float ratio;
     /* screen coordinates of upper left and bottom right corners */
     int ul_x, ul_y, br_x, br_y;
-
-    /* this only works if width ratio <= height ratio */
-    ratio = 640.0 / width;
-    ul_x = 0;
-    br_x = (ratio * width);
-    ul_y = ((480 - ratio * height) / 2);
-    br_y = ul_y + ratio * height;
-
+    
     /* Things common to vertices */
     vid_stream.vert[0].z     = vid_stream.vert[1].z     = vid_stream.vert[2].z     = vid_stream.vert[3].z     = 1.0f; 
     vid_stream.vert[0].argb  = vid_stream.vert[1].argb  = vid_stream.vert[2].argb  = vid_stream.vert[3].argb  = PVR_PACK_COLOR(1.0f, 1.0f, 1.0f, 1.0f);    
     vid_stream.vert[0].oargb = vid_stream.vert[1].oargb = vid_stream.vert[2].oargb = vid_stream.vert[3].oargb = 0;  
     vid_stream.vert[0].flags = vid_stream.vert[1].flags = vid_stream.vert[2].flags = PVR_CMD_VERTEX;         
-    vid_stream.vert[3].flags = PVR_CMD_VERTEX_EOL; 
+    vid_stream.vert[3].flags = PVR_CMD_VERTEX_EOL;
+
+    ratio = 640.0 / width;
+    ul_x = 0;
+    br_x = (ratio * width);
+    ul_y = ((480 - ratio * height) / 2);
+    br_y = ul_y + ratio * height;
 
     vid_stream.vert[0].x = ul_x;
     vid_stream.vert[0].y = ul_y;
@@ -470,7 +448,6 @@ static void* player_snd_thread() {
         switch(snd_stream.status)
         {
             case SND_STREAM_STATUS_READY:
-                //
                 break;
             case SND_STREAM_STATUS_RESUMING:
                 snd_stream_start(snd_stream.shnd, snd_stream.rate, snd_stream.channels-1);
@@ -486,7 +463,7 @@ static void* player_snd_thread() {
                 break;
             case SND_STREAM_STATUS_STREAMING:
                 snd_stream_poll(snd_stream.shnd);
-                thd_sleep(20);
+                thd_sleep(40);
                 break;
         }
     }
@@ -504,10 +481,26 @@ uint64_t dc_get_time() {
 	return msec;
 }
 
+// For some reason this give horrible performance
 static void frame_delay() {
-    uint64_t CPU_real_time = dc_get_time() - last_time;         
+    uint64_t CPU_real_time = dc_get_time() - last_time;
+
     while(CPU_real_time < ms_per_frame) {
-        CPU_real_time = dc_get_time() - last_time;
         thd_pass();
+        CPU_real_time = dc_get_time() - last_time;
     }
+    last_time = dc_get_time();
+}
+
+static void initialize_defaults(format_player_t* player, int index) {
+    roq_set_video_decode_callback(player->format, roq_video_cb);
+    roq_set_audio_decode_callback(player->format, roq_audio_cb);
+
+    snd_stream.shnd = index;
+    snd_stream.status = SND_STREAM_STATUS_READY;
+
+    player->initialized_format = 1;
+
+    initialize_graphics(roq_get_width(player->format), roq_get_height(player->format));
+    initialize_audio();
 }
