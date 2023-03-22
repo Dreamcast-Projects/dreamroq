@@ -378,7 +378,7 @@ void roq_destroy(roq_t* roq) {
     roq = NULL;
 }
 
-void roq_rewind(roq_t* roq) {
+void roq_seek(roq_t* roq) {
     roq->frame_index = 0;
     roq->current_frame = 0;
     roq_buffer_set_offset(roq->buffer, CHUNK_HEADER_SIZE, SEEK_SET);
@@ -386,7 +386,7 @@ void roq_rewind(roq_t* roq) {
 
 static void roq_handle_end(roq_t* roq) {
 	if (roq->loop) {
-		roq_rewind(roq);
+		roq_seek(roq);
         roq->has_ended = FALSE;
 	}
 	else {

@@ -23,8 +23,10 @@ int player_errno = 0;
 
 struct format_player_t {
     roq_t* format;
-    int vol;
+    int paused;
     int initialized_format;
+
+    int vol;
 };
 
 #define STREAM_BUFFER_SIZE 1024*1024
@@ -228,32 +230,32 @@ void player_play(format_player_t* format_player, frame_callback frame_cb) {
     if(snd_stream.status == SND_STREAM_STATUS_STREAMING)
        return;
 
+    format_player->paused = 0;
     snd_stream.status = SND_STREAM_STATUS_RESUMING;
 
     do {
         if(frame_cb)
             frame_cb();
 
-        roq_decode(format_player->format);
-    } while (!roq_has_ended(format_player->format) && 
-            (snd_stream.status == SND_STREAM_STATUS_STREAMING ||
-             snd_stream.status == SND_STREAM_STATUS_RESUMING));
+        if(!format_player->paused)
+            roq_decode(format_player->format);
+    } while (!roq_has_ended(format_player->format));
 }
 
 void player_pause(format_player_t* format_player) {
-    if(snd_stream.status == SND_STREAM_STATUS_READY ||
-       snd_stream.status == SND_STREAM_STATUS_PAUSING)
-       return;
-       
-    snd_stream.status = SND_STREAM_STATUS_PAUSING;
+    format_player->paused = 1;
+    if(snd_stream.status != SND_STREAM_STATUS_PAUSING &&
+       snd_stream.status != SND_STREAM_STATUS_READY)
+        snd_stream.status = SND_STREAM_STATUS_PAUSING;
 }
 
 void player_stop(format_player_t* format_player) {
-    if(snd_stream.status == SND_STREAM_STATUS_READY ||
-       snd_stream.status == SND_STREAM_STATUS_STOPPING)
-       return;
-       
-    snd_stream.status = SND_STREAM_STATUS_STOPPING;
+    format_player->paused = 1;
+    roq_seek(format_player->format);
+
+    if(snd_stream.status != SND_STREAM_STATUS_STOPPING &&
+       snd_stream.status != SND_STREAM_STATUS_READY)
+        snd_stream.status = SND_STREAM_STATUS_STOPPING;
 }
 
 void player_volume(format_player_t* format_player, int vol) {
@@ -425,6 +427,7 @@ static void* player_snd_thread() {
                 snd_stream.status = SND_STREAM_STATUS_READY;
                 break;
             case SND_STREAM_STATUS_STOPPING:
+                memset(snd_stream.decode_buffer, 0, STREAM_BUFFER_SIZE);
                 snd_stream_stop(snd_stream.shnd);
                 snd_stream.status = SND_STREAM_STATUS_READY;
                 break;
