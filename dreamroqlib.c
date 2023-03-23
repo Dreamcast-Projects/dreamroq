@@ -79,6 +79,11 @@ struct roq_t {
     short int cr_g_lut[VQR_ARRAY_SIZE];
     short int cb_g_lut[VQR_ARRAY_SIZE];
     short int yy_lut[VQR_ARRAY_SIZE];
+
+    // More LUT
+    int block_offset_lut[4];
+    int subblock_offset_lut[4];
+    int upsample_offset_lut[16];
 };
 
 enum roq_buffer_mode {
@@ -476,13 +481,30 @@ static roq_t* roq_create_with_buffer(roq_buffer_t* buffer) {
             while (roq->stride < roq->width)
                 roq->stride <<= 1;
 
+            // (block / 2 * 8 * roq->stride) + (block % 2 * 8);
+            roq->block_offset_lut[0] = (0 / 2 * 8 * roq->stride) + (0 % 2 * 8);
+            roq->block_offset_lut[1] = (1 / 2 * 8 * roq->stride) + (1 % 2 * 8);
+            roq->block_offset_lut[2] = (2 / 2 * 8 * roq->stride) + (2 % 2 * 8);
+            roq->block_offset_lut[3] = (3 / 2 * 8 * roq->stride) + (3 % 2 * 8);
+
+            // (subblock / 2 * 4 * stride) + (subblock % 2 * 4);
+            roq->subblock_offset_lut[0] = (0 / 2 * 4 * roq->stride) + (0 % 2 * 4);
+            roq->subblock_offset_lut[1] = (1 / 2 * 4 * roq->stride) + (1 % 2 * 4);
+            roq->subblock_offset_lut[2] = (2 / 2 * 4 * roq->stride) + (2 % 2 * 4);
+            roq->subblock_offset_lut[3] = (3 / 2 * 4 * roq->stride) + (3 % 2 * 4);
+
+            for(i =0; i<16; i++) {
+                roq->upsample_offset_lut[i] = (i / 4 * 2 * roq->stride) + (i % 4 * 2);
+            }
+
             roq->texture_height = 8;
             while (roq->texture_height < roq->height)
                 roq->texture_height <<= 1;
 
-            printf("\tRoQ_INFO: dimensions = %dx%d, %dx%d; %d mbs, texture = %dx%d\n", 
+            printf("\tRoQ_INFO: dimensions = %dx%d, %dx%d; %d mbs, texture = %dx%d\n\n", 
                 roq->width, roq->height, roq->mb_width, roq->mb_height,
                 roq->mb_count, roq->stride, roq->texture_height);
+            fflush(stdout);
 
             roq->frame[0] = (unsigned short*)memalign(32, roq->texture_height * roq->stride * sizeof(unsigned short));
             roq->frame[1] = (unsigned short*)memalign(32, roq->texture_height * roq->stride * sizeof(unsigned short));
@@ -724,6 +746,26 @@ static int roq_unpack_quad_codebook(roq_t* roq, unsigned char *buf, int size, in
     mode_count -= 2; \
     mode = (mode_set >> mode_count) & 0x03;
 
+// inline void get_byte(int *index, int size, int *status, unsigned char *x, unsigned char *buf) {
+//     if (*index >= size) {
+//         *status = FALSE;
+//         *x = 0;
+//     } else {
+//         *x = buf[(*index)++];
+//     }
+// }
+
+// inline void get_mode(int *mode_count, int *mode_set, int *mode, unsigned char *mode_lo, unsigned char *mode_hi) {
+//     if (!*mode_count) {
+//         get_byte(mode_lo);
+//         get_byte(mode_hi);
+//         *mode_set = (*mode_hi << 8) | *mode_lo;
+//         *mode_count = 16;
+//     }
+//     *mode_count -= 2;
+//     *mode = (*mode_set >> *mode_count) & 0x03;
+// }
+
 static unsigned short* roq_unpack_vq(roq_t* roq, unsigned char* buf, int size, unsigned int arg) {
     int status = TRUE;
     int mb_x, mb_y;
@@ -746,7 +788,7 @@ static unsigned short* roq_unpack_vq(roq_t* roq, unsigned char* buf, int size, u
     unsigned short *last_ptr;
     unsigned short *vector16;
     unsigned int *vector32;
-    int stride32 = stride / 2;
+    int stride32m2 = stride / 2 - 2;
 
     /* bytestream management */
     int index = 0;
@@ -778,7 +820,7 @@ static unsigned short* roq_unpack_vq(roq_t* roq, unsigned char* buf, int size, u
         for (mb_x = 0; mb_x < roq->mb_width && status == TRUE; mb_x++) {
             mb_offset = line_offset + mb_x * 16;
             for (block = 0; block < 4 && status == TRUE; block++) {
-                block_offset = mb_offset + (block / 2 * 8 * stride) + (block % 2 * 8);
+                block_offset = mb_offset + roq->block_offset_lut[block];
                 /* each 8x8 block gets a mode */
                 GET_MODE();
                 switch (mode) {
@@ -814,7 +856,7 @@ static unsigned short* roq_unpack_vq(roq_t* roq, unsigned char* buf, int size, u
                     vector16 = roq->cb4x4_rgb565[data_byte];
                     for (i = 0; i < 4*4; i++) {
                         this_ptr = this_frame + block_offset +
-                            (i / 4 * 2 * stride) + (i % 4 * 2);
+                            roq->upsample_offset_lut[i];
                         this_ptr[0] = *vector16;
                         this_ptr[1] = *vector16;
                         this_ptr[stride+0] = *vector16;
@@ -825,7 +867,7 @@ static unsigned short* roq_unpack_vq(roq_t* roq, unsigned char* buf, int size, u
 
                 case 3:  /* CCC: subdivide into 4 subblocks */
                     for (subblock = 0; subblock < 4; subblock++) {
-                        subblock_offset = block_offset + (subblock / 2 * 4 * stride) + (subblock % 2 * 4);
+                        subblock_offset = block_offset + roq->subblock_offset_lut[subblock];
 
                         GET_MODE();
                         switch (mode)
@@ -861,7 +903,7 @@ static unsigned short* roq_unpack_vq(roq_t* roq, unsigned char* buf, int size, u
                                 *this_ptr32++ = *vector32++;
                                 *this_ptr32++ = *vector32++;
 
-                                this_ptr32 += stride32 - 2;
+                                this_ptr32 += stride32m2;
                             }
                             break;
 

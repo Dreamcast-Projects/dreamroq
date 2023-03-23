@@ -244,8 +244,8 @@ void player_play(format_player_t* format_player, frame_callback frame_cb) {
 
 void player_pause(format_player_t* format_player) {
     format_player->paused = 1;
-    if(snd_stream.status != SND_STREAM_STATUS_PAUSING &&
-       snd_stream.status != SND_STREAM_STATUS_READY)
+    if(snd_stream.status != SND_STREAM_STATUS_READY &&
+       snd_stream.status != SND_STREAM_STATUS_PAUSING)
         snd_stream.status = SND_STREAM_STATUS_PAUSING;
 }
 
@@ -253,8 +253,8 @@ void player_stop(format_player_t* format_player) {
     format_player->paused = 1;
     roq_seek(format_player->format);
 
-    if(snd_stream.status != SND_STREAM_STATUS_STOPPING &&
-       snd_stream.status != SND_STREAM_STATUS_READY)
+    if(snd_stream.status != SND_STREAM_STATUS_READY &&
+       snd_stream.status != SND_STREAM_STATUS_STOPPING)
         snd_stream.status = SND_STREAM_STATUS_STOPPING;
 }
 
@@ -293,7 +293,7 @@ static void roq_video_cb(unsigned short *texture_data, int width, int height, in
     pvr_txr_load(texture_data, vid_stream.textures[vid_stream.current_frame], stride * texture_height * 2);
 
     /* Dubble render the 30fps video to make it 60fps */
-    for (int i = 0; i < 2; i++) {
+    //for (int i = 0; i < 2; i++) {
         pvr_wait_ready();
         pvr_scene_begin();
         pvr_list_begin(PVR_LIST_OP_POLY);
@@ -306,7 +306,7 @@ static void roq_video_cb(unsigned short *texture_data, int width, int height, in
 
         pvr_list_finish();
         pvr_scene_finish();
-    }
+    //}
 
     vid_stream.current_frame = !vid_stream.current_frame;
 }
@@ -352,9 +352,9 @@ static int initialize_graphics(int width, int height) {
 
     pvr_poly_cxt_t cxt;
 
-    pvr_poly_cxt_txr(&cxt, PVR_LIST_OP_POLY, PVR_TXRFMT_RGB565 | PVR_TXRFMT_NONTWIDDLED, width, height, vid_stream.textures[0], PVR_FILTER_BILINEAR);
+    pvr_poly_cxt_txr(&cxt, PVR_LIST_OP_POLY, PVR_TXRFMT_RGB565 | PVR_TXRFMT_NONTWIDDLED, width, height, vid_stream.textures[0], PVR_FILTER_BILINEAR); // PVR_FILTER_NONE
     pvr_poly_compile(&vid_stream.hdr[0], &cxt);
-    pvr_poly_cxt_txr(&cxt, PVR_LIST_OP_POLY, PVR_TXRFMT_RGB565 | PVR_TXRFMT_NONTWIDDLED, width, height, vid_stream.textures[1], PVR_FILTER_BILINEAR);
+    pvr_poly_cxt_txr(&cxt, PVR_LIST_OP_POLY, PVR_TXRFMT_RGB565 | PVR_TXRFMT_NONTWIDDLED, width, height, vid_stream.textures[1], PVR_FILTER_BILINEAR); //PVR_FILTER_NONE
     pvr_poly_compile(&vid_stream.hdr[1], &cxt);
     
     vid_stream.vert[0].z     = vid_stream.vert[1].z     = vid_stream.vert[2].z     = vid_stream.vert[3].z     = 1.0f; 
@@ -433,7 +433,7 @@ static void* player_snd_thread() {
                 break;
             case SND_STREAM_STATUS_STREAMING:
                 snd_stream_poll(snd_stream.shnd);
-                thd_sleep(40);
+                thd_sleep(10);
                 break;
         }
     }

@@ -3,11 +3,8 @@ TARGET = dreamroq-player.elf
 
 TARGET_BIN = dreamroq-player.bin
 
-# Set compiler flags
-#KOS_CFLAGS += -g -finstrument-functions
-
 # List all of your C files here, but change the extension to ".o"
-OBJS = main.o roq-player.o dreamroqlib.o #profiler.o 
+OBJS = main.o roq-player.o dreamroqlib.o
 
 all: rm-elf $(TARGET)
 
