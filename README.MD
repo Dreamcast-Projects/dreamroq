@@ -23,8 +23,6 @@ RoQ files can be created using the [FFMEG](http://ffmpeg.org/) encoder:
 
 This command will convert your input video into a 512x512, 30 fps RoQ video with 22050 Hz audio.
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
 
 <!-- Building (Dreamcast) -->
 ### Building for Dreamcast
@@ -55,8 +53,6 @@ This utility decodes the RoQ file from the command line into a series of PNM fil
 
 Dreamroq is designed to be license-compatible with the rest of the KallistiOS operating system, which uses a BSD-style open-source license. You can read the specific license text in LICENSE.KOS.
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
 
 <!-- ACKNOWLEDGMENTS -->
 ### Credits
@@ -64,6 +60,4 @@ Dreamroq is designed to be license-compatible with the rest of the KallistiOS op
 * Library originally written by Mike Melanson (mike -at- multimedia.cx)
 * Audio support added by Josh "PH3NOM" Pearson (ph3nom.dcmc@gmail.com)
 * Inspired by [Ian Michael](https://github.com/ianmicheal)
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
