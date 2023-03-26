@@ -25,7 +25,7 @@ This command will convert your input video into a 512x512, 30 fps RoQ video with
 
 
 <!-- Building (Dreamcast) -->
-### Building for Dreamcast
+## Building for Dreamcast
 
 To build for the Sega Dreamcast, simply run:
 
@@ -36,7 +36,7 @@ This command will generate a file named dreamroq-player.elf, which can be loaded
 The main.c file contains a hardcoded RoQ romdisk file path (/rd/) in its main function. Ideally, this should point to a file burned onto an optical disc.
 
 <!-- Building (Unix) -->
-### Building for Unix
+## Building for Unix
 
 Dreamroq includes two Makefiles. The first, invoked by running a bare make command as described in the "Building for Dreamcast" section, builds the Dreamcast application. The second Makefile, Makefile.PC, can be invoked with:
 
@@ -49,13 +49,13 @@ in the source directory. This command will build the test-dreamroq executable ut
 This utility decodes the RoQ file from the command line into a series of PNM files and a .wav file in the extract directory (note: this process could consume a significant amount of disk space).
 
 <!-- LICENSE -->
-### License
+## License
 
 Dreamroq is designed to be license-compatible with the rest of the KallistiOS operating system, which uses a BSD-style open-source license. You can read the specific license text in LICENSE.KOS.
 
 
 <!-- ACKNOWLEDGMENTS -->
-### Credits
+## Credits
 
 * Library originally written by Mike Melanson (mike -at- multimedia.cx)
 * Audio support added by Josh "PH3NOM" Pearson (ph3nom.dcmc@gmail.com)
