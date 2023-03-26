@@ -3,7 +3,7 @@
 <br />
 <div align="center">
 
-  <h3 align="center">Dreamroq Library</h3>
+  <h1 align="center">Dreamroq Library</h3>
 
 </div>
 
