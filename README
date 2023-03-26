@@ -1,7 +1,15 @@
-Dreamroq Library
 
-Introduction
-============
+<!-- PROJECT LOGO -->
+<br />
+<div align="center">
+
+  <h3 align="center">Dreamroq Library</h3>
+
+</div>
+
+<!-- ABOUT THE PROJECT -->
+## About The Project
+
 Dreamroq is a RoQ playback library designed for the Sega Dreamcast video
 game console.
 
@@ -33,67 +41,63 @@ programs:
 
 http://ffmpeg.org/
 
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-License
-=======
-Dreamroq is meant to be license-compatible with the rest of the KallistiOS
-operating system, which is a BSD-style open source license. You can read
-the specific text in LICENSE.KOS.
+<!-- Building (KOS) -->
+### Building (KOS)
+
+To build for the Sega Dreamcast, simply type:
+
+```make```
+
+This is a standard KOS Makefile which assumes that a KOS build environment is 
+available. This is covered in the KOS documentation. This step will build a file 
+named dreamroq-player.elf which can be loaded onto a Dreamcast console via 
+standard means (also outside the scope of this document).
+
+The file main.c contains a hardcoded RoQ file path in its main function. It is 
+best if this points to a file burned on an optical disc. It is also viable to 
+build a small RoQ file as a ROM disk into the ELF file (which is well supported 
+in KOS) and load the file from the '/rd' mount point.
 
 
-Building (Unix)
-===============
-To build and test on Linux/Mac OS X/Cygwin, simply type:
+<!-- Building (Unix) -->
+### Building (Unix)
 
-  make
+There are 2 Makefiles included with Dreamroq. The first -- implicitly invoked when running 
+a bare 'make' command as seen in the "Building (KOS)" section -- builds the dreamcast application. 
+The second Makefile is Makefile.PC, invoked with:
+
+  ```make -f Makefile.PC```
 
 in the source directory. This will build the executable test-dreamroq. This
 utility has the following usage:
 
-  ./test-dreamroq <file.roq>
+  ```./test-dreamroq <file.roq>```
 
 This will decode the RoQ file from the command line into a series of PNM
-files in the current working directory (watch out-- this could take up a
+files and a .wav in the extract directory (watch out-- this could take up a
 lot of disk space).
 
 
-Building (KOS)
-==============
-There are 2 Makefiles included with Dreamroq. The first -- implicitly
-invoked when running a bare 'make' command as seen in the "Building (Unix)"
-section -- builds the test utility. The second Makefile is Makefile.KOS,
-invoked with:
+<!-- LICENSE -->
+## License
 
-  make -f Makefile.KOS
+Dreamroq is meant to be license-compatible with the rest of the KallistiOS
+operating system, which is a BSD-style open source license. You can read
+the specific text in LICENSE.KOS.
 
-This is a standard KOS Makefile which assumes that a KOS build environment
-is available. This is covered in the KOS documentation. This step will
-build a file named dreamroq-player.elf which can be loaded onto a Dreamcast
-console via standard means (also outside the scope of this document).
-
-The file dreamcast-player.c contains a hardcoded RoQ file path in its
-main function. It is best if this points to a file burned on an optical
-disc. It is also viable to build a small RoQ file as a ROM disk into the
-ELF file (which is well supported in KOS) and load the file from the '/rd'
-mount point.
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 
-Bugs, Issues, and Future Development
-====================================
-The player is just a proof of concept at this point. It doesn't try to
-render frames with proper timing-- it just plays them as fast as possible
-(which often isn't very fast, mostly due to the I/O bottleneck).
+<!-- ACKNOWLEDGMENTS -->
+## Acknowledgments
 
-If the RoQ video is taller than it is wide, expect some odd rendering.
-
-The API between the library and the client app leaves a bit to be desired.
-Notably absent is some proper initialization and teardown mechanism.
-Currently, the first call to the render callback initializes the PVR buffers
-but they are never explicitly freed.
-
-
-Credits
-======= 
 Library originally written by Mike Melanson (mike -at- multimedia.cx)
 
 Audio support added by Josh "PH3NOM" Pearson (ph3nom.dcmc@gmail.com)
+
+[Ian Michael](https://github.com/ianmicheal)
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
