@@ -1,8 +1,9 @@
 /*
  * Dreamroq by Mike Melanson
- *
+ * Edited by Andress Barajas
+ * 
  * This is the header file to be included in the programs wishing to
- * use the Dreamroq playback engine.
+ * use the Dreamroq decoder engine.
  */
 
 #ifndef DREAMROQ_H
@@ -26,8 +27,6 @@ extern "C" {
 #define ROQ_RENDER_PROBLEM    9
 #define ROQ_CLIENT_PROBLEM    10
 
-#define ROQ_BUFFER_DEFAULT_SIZE (64 * 1024)
-
 extern int roq_errno;
 
 typedef struct roq_t roq_t;
@@ -49,19 +48,13 @@ roq_t* roq_create_with_file(FILE* fh, int close_when_done);
 
 roq_t* roq_create_with_memory(unsigned char* bytes, size_t length, int free_when_done);
 
-// The library calls this function when it has a frame ready for display.
-typedef void(*roq_video_decode_callback)
-	(unsigned short *frame_data, int width, int height, int stride, int texture_height);
-void roq_set_video_decode_callback(roq_t *roq, roq_video_decode_callback fp);
-
-// The library calls this function when it has pcm samples ready for output.
-typedef void(*roq_audio_decode_callback)
-	(unsigned char *audio_frame_data, int size, int channels);
-void roq_set_audio_decode_callback(roq_t *roq, roq_audio_decode_callback fp);
+void roq_rewind(roq_t* roq);
 
 int roq_get_loop(roq_t* roq);
 
-void roq_set_loop(roq_t* roq, int loop);
+typedef void(*roq_loop_callback)
+	(void);
+void roq_set_loop(roq_t* roq, int loop, roq_loop_callback cb);
 
 int roq_decode(roq_t* roq);
 
@@ -75,7 +68,15 @@ int roq_has_ended(roq_t* roq);
 
 void roq_destroy(roq_t* roq);
 
-void roq_seek(roq_t* roq);
+// The library calls this function when it has a frame ready for display.
+typedef void(*roq_video_decode_callback)
+	(unsigned short *frame_data, int width, int height, int stride, int texture_height);
+void roq_set_video_decode_callback(roq_t *roq, roq_video_decode_callback cb);
+
+// The library calls this function when it has pcm samples ready for output.
+typedef void(*roq_audio_decode_callback)
+	(unsigned char *audio_frame_data, int size, int channels);
+void roq_set_audio_decode_callback(roq_t *roq, roq_audio_decode_callback cb);
 
 #ifdef __cplusplus
 }

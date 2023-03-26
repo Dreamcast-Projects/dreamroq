@@ -1,3 +1,10 @@
+/*
+ * Roq-Player by Andress Barajas
+ * 
+ * Include this header file in applications you want to 
+ * have the ability to easily play a .ROQ file
+ */
+
 #ifndef ROQPLAYER_H
 #define ROQPLAYER_H
 
@@ -15,31 +22,31 @@ extern "C" {
 #define FORMAT_INIT_FAILURE   0x05
 #define SOURCE_ERROR          0x06
 
+// Stores the above values
 extern int player_errno;
 
-/* The library call this method after decoding a frame of video/audio.
-*  You can add controller input code to callback so you react to controller
-*  input while the video is playing. */
+// The library call this method after decoding a frame of video/audio.
+// You can add controller input code to callback so you react to controller
+// input while the video is playing.
 typedef void (*frame_callback)();
 
-typedef struct format_player_t format_player_t;
+typedef struct roq_player_t roq_player_t;
 
-int player_init();
-void player_shutdown(format_player_t* format_player);
+int player_init(void);
+void player_shutdown(roq_player_t* player);
 
-format_player_t* player_create(const char* filename);
-format_player_t* player_create_fd(FILE* f);
-format_player_t* player_create_buf(unsigned char* buf, const unsigned int length);
+roq_player_t* player_create(const char* filename);
+roq_player_t* player_create_file(FILE* f);
+roq_player_t* player_create_memory(unsigned char* memory, const unsigned int length);
 
-//void player_decode(format_player_t* format_player);
-void player_play(format_player_t* format_player, frame_callback frame_cb);
-void player_pause(format_player_t* format_player);
-void player_stop(format_player_t* format_player);
-void player_volume(format_player_t* format_player, int vol);
-int player_isplaying(format_player_t* format_player);
-int player_get_loop(format_player_t* format_player);
-void player_set_loop(format_player_t* format_player, int loop);
-int player_has_ended(format_player_t* format_player);
+void player_play(roq_player_t* player, frame_callback frame_cb);
+void player_pause(roq_player_t* player);
+void player_stop(roq_player_t* player);
+void player_volume(roq_player_t* player, int vol);
+int player_isplaying(roq_player_t* player);
+int player_get_loop(roq_player_t* player);
+void player_set_loop(roq_player_t* player, int loop);
+int player_has_ended(roq_player_t* player);
 
 #ifdef __cplusplus
 }

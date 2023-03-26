@@ -22,7 +22,7 @@ void video_callback(unsigned short* buf, int width, int height, int stride, int 
     unsigned int pixel;
     unsigned short *buf_rgb565 = (unsigned short*)buf;
 
-    sprintf(filename, "%04d.pnm", count);
+    sprintf(filename, "extract/%04d.pnm", count);
     printf("writing frame %d to file %s\n", count, filename);
     count++;
     out = fopen(filename, "wb");
@@ -33,30 +33,17 @@ void video_callback(unsigned short* buf, int width, int height, int stride, int 
     {
         for (x = 0; x < width; x++)
         {
-            // if (colorspace == ROQ_RGB565)
-            // {
-                pixel = *buf_rgb565++;
-                fputc(((pixel >> 11) << 3) & 0xFF, out);  /* red */
-                fputc(((pixel >>  5) << 2) & 0xFF, out);  /* green */
-                fputc(((pixel >>  0) << 3) & 0xFF, out);  /* blue */
-            //}
-            // else if (colorspace == ROQ_RGBA)
-            // {
-            //     pixel = *buf_rgba++;
-            //     fputc((pixel >> 24) & 0xFF, out);  /* red */
-            //     fputc((pixel >> 16) & 0xFF, out);  /* green */
-            //     fputc((pixel >>  8) & 0xFF, out);  /* blue */
-            // }
+            pixel = *buf_rgb565++;
+            fputc(((pixel >> 11) << 3) & 0xFF, out);  /* red */
+            fputc(((pixel >>  5) << 2) & 0xFF, out);  /* green */
+            fputc(((pixel >>  0) << 3) & 0xFF, out);  /* blue */
         }
-        // if (colorspace == ROQ_RGB565)
-            buf_rgb565 += (stride - width);
-        // else if (colorspace == ROQ_RGBA)
-        //     buf_rgba += (stride - width);
+        buf_rgb565 += (stride - width);
     }
     fclose(out);
 }
 
-#define AUDIO_FILENAME "roq-audio.wav"
+#define AUDIO_FILENAME "extract/roq-audio.wav"
 static char wav_header[] = {
     'R', 'I', 'F', 'F',  /* RIFF header */
       0,   0,   0,   0,  /* file size will be filled in later */
@@ -143,25 +130,13 @@ int finish_cb()
 
 int main(int argc, char *argv[])
 {
-    // int status;
-    // roq_callbacks_t cbs;
+    if (argc < 2)
+    {
+        printf("USAGE: test-dreamroq <file.roq>\n");
+        return 1;
+    }
 
-    // if (argc < 2)
-    // {
-    //     printf("USAGE: test-dreamroq <file.roq>\n");
-    //     return 1;
-    // }
-
-    // cbs.render_cb = render_cb;
-    // cbs.audio_cb = audio_cb;
-    // cbs.quit_cb = quit_cb;
-    // cbs.finish_cb = finish_cb;
-
-    // status = dreamroq_play(argv[1], ROQ_RGBA, 0, &cbs);
-    // printf("final status = %d\n", status);
-
-    // return status;
-    roq_t *roq = roq_create_with_filename("./romdisk/roguelogo.roq");
+    roq_t *roq = roq_create_with_filename(argv[1]);
 
     // Install the video & audio decode callbacks
     roq_set_video_decode_callback(roq, video_callback);
@@ -171,15 +146,9 @@ int main(int argc, char *argv[])
     do {
         if(quit_cb())
             break;
-
-        // // Compute the delta time since the last app_update(), limit max step to 
-        // // 1/30th of a second
-        // double current_time = timer_ms_gettime64() / 1000.0;
-        // double elapsed_time = min(current_time - roq_get_last_time(roq), 1.0 / roq_get_framerate(roq));
-        // roq_set_last_time(roq, current_time);
 	
         // Decode
-        roq_decode(roq, 0.0);
+        roq_decode(roq);
     } while (!roq_has_ended(roq));
 
     printf("DONE");

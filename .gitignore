@@ -2,12 +2,10 @@
 *.elf
 *.pnm
 *.bin
-*.img
-*.dot
-*.jpg
-*.txt
 *.cdi
+*.wav
+*.img
 test-dreamroq
-roq-audio.wav
-ISO/
+Makefile.KOS
 roq\ files/
+ISO/

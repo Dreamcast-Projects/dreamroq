@@ -2,12 +2,14 @@
 #include <dc/maple.h>
 #include <dc/maple/controller.h>
 
+#include <stdlib.h>
+
 #include "roq-player.h"
 
 extern uint8 romdisk[];
 KOS_INIT_ROMDISK(romdisk);
 
-static format_player_t* player;
+static roq_player_t* player;
 
 static void frame_cb() {
     maple_device_t *dev;
@@ -20,13 +22,16 @@ static void frame_cb() {
 
         if(state)   {
             if(state->buttons & CONT_START) {
-                player_pause(player);
+                arch_exit();
             }
             else if(state->buttons & CONT_A) {
                 player_play(player, frame_cb);
             }
             else if(state->buttons & CONT_B) {
                 player_stop(player);
+            }
+            else if(state->buttons & CONT_X) {
+                player_pause(player);
             }
         }
     }
@@ -37,8 +42,8 @@ int main()
     vid_set_mode(DM_640x480_NTSC_IL, PM_RGB565);
 
     player_init();
-    player = player_create("/cd/saintro.roq");
-    player_set_loop(player, 1);
+    player = player_create("/rd/roguelogo.roq");
+    //player_set_loop(player, 1);
     player_play(player, frame_cb);
 
     player_shutdown(player);

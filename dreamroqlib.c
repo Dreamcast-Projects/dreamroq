@@ -1,14 +1,17 @@
 /*
  * Dreamroq by Mike Melanson
  * Audio support by Josh Pearson
+ * Edited by Andress Barajas
  * 
- * This is the main playback engine.
+ * This is the decoder engine.
  */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _arch_dreamcast
 #include <malloc.h>
+#endif
 
 #include "dreamroqlib.h"
 
@@ -27,6 +30,10 @@
 #define RoQ_SIGNATURE      0x1084
 
 #define CHUNK_HEADER_SIZE 8
+
+#define ROQ_BUFFER_DEFAULT_SIZE 1024 * 64
+
+#define ROQ_FPS 30
 
 #define LE_16(buf) (*buf | (*(buf+1) << 8))
 #define LE_32(buf) (*buf | (*(buf+1) << 8) | (*(buf+2) << 16) | (*(buf+3) << 24))
@@ -50,16 +57,16 @@ struct roq_t {
     unsigned short *frame[2];
     unsigned int frame_index;
 
+    int loop;
+    int has_ended;
+
     int stride;
     int framerate;
-    int current_frame;
     int texture_height;
-	
-	int loop;
-    int has_ended;
 
     roq_buffer_t *buffer;
 
+    roq_loop_callback loop_callback;
     roq_video_decode_callback video_decode_callback;
 	roq_audio_decode_callback audio_decode_callback;
 
@@ -73,14 +80,15 @@ struct roq_t {
     // Sound LUT
     short int snd_sqr_array[SQR_ARRAY_SIZE];
 
-    // Video LUT
+    // Codebook LUT
     short int cr_r_lut[VQR_ARRAY_SIZE];
     short int cb_b_lut[VQR_ARRAY_SIZE];
     short int cr_g_lut[VQR_ARRAY_SIZE];
     short int cb_g_lut[VQR_ARRAY_SIZE];
     short int yy_lut[VQR_ARRAY_SIZE];
 
-    // More LUT
+    // Video Decoding LUT
+    int unpack_4x4_lut[4];
     int block_offset_lut[4];
     int subblock_offset_lut[4];
     int upsample_offset_lut[16];
@@ -132,60 +140,61 @@ static unsigned short* roq_unpack_vq(roq_t* roq, unsigned char* buf, int size, u
 
 roq_t* roq_create_with_filename(const char* filename) {
 	roq_buffer_t *buffer = roq_buffer_create_with_filename(filename);
-	if (!buffer) {
+	if (!buffer)
 		return NULL;
-	}
+        
 	return roq_create_with_buffer(buffer);
 }
 
 roq_t* roq_create_with_file(FILE* fh, int close_when_done) {
 	roq_buffer_t *buffer = roq_buffer_create_with_file(fh, close_when_done);
-    if (!buffer) {
+    if (!buffer)
 		return NULL;
-	}
+    
 	return roq_create_with_buffer(buffer);
 }
 
 roq_t* roq_create_with_memory(unsigned char* bytes, size_t capacity, int free_when_done) {
 	roq_buffer_t *buffer = roq_buffer_create_with_memory(bytes, capacity, free_when_done);
-    if (!buffer) {
+    if (!buffer)
 		return NULL;
-	}
+
 	return roq_create_with_buffer(buffer);
 }
 
-void roq_set_video_decode_callback(roq_t* roq, roq_video_decode_callback fp) {
-	roq->video_decode_callback = fp;
+void roq_set_video_decode_callback(roq_t* roq, roq_video_decode_callback cb) {
+	roq->video_decode_callback = cb;
 }
 
-void roq_set_audio_decode_callback(roq_t* roq, roq_audio_decode_callback fp) {
-	roq->audio_decode_callback = fp;
+void roq_set_audio_decode_callback(roq_t* roq, roq_audio_decode_callback cb) {
+	roq->audio_decode_callback = cb;
+}
+
+void roq_rewind(roq_t* roq) {
+    roq_buffer_set_offset(roq->buffer, CHUNK_HEADER_SIZE, SEEK_SET);
 }
 
 int roq_get_loop(roq_t* roq) {
 	return roq->loop;
 }
 
-void roq_set_loop(roq_t* roq, int loop) {
+void roq_set_loop(roq_t* roq, int loop, roq_loop_callback cb) {
 	roq->loop = loop;
+    roq->loop_callback = cb;
 }
 
 int roq_decode(roq_t* roq) {
 	int decode_video = roq->video_decode_callback != NULL;
 	int decode_audio = roq->audio_decode_callback != NULL;
 
-	if (!decode_video && !decode_audio) {
-		// Nothing to decode here
+	if (!decode_video && !decode_audio)
 		return FALSE;
-	}
 
-    if(roq_eof(roq->buffer)) {
+    if(roq_eof(roq->buffer))
         roq_handle_end(roq);
-    }
 
-    if(roq->has_ended) {
+    if(roq->has_ended)
         return FALSE;
-    }
 
     roq_chunk_t header;
     int video_ended = FALSE;
@@ -292,7 +301,7 @@ int roq_decode(roq_t* roq) {
                             roq->pcm_sample[i * 2 + 1] = (snd_left & 0xff00) >> 8;
                         }
                         audio_decoded = TRUE;
-                        roq->audio_decode_callback(roq->pcm_sample, header.chunk_size*2, 1);
+                        roq->audio_decode_callback(roq->pcm_sample, roq->pcm_samples, roq->channels);
                     }
                     break;
                 case RoQ_SOUND_STEREO:
@@ -324,7 +333,7 @@ int roq_decode(roq_t* roq) {
                             roq->pcm_sample[i * 2 + 3] = (snd_right & 0xff00) >> 8;
                         }
                         audio_decoded = TRUE;
-                        roq->audio_decode_callback(roq->pcm_sample, header.chunk_size*2, 2);
+                        roq->audio_decode_callback(roq->pcm_sample, roq->pcm_samples, roq->channels);
                     }
                     break;
                 default:
@@ -338,9 +347,6 @@ int roq_decode(roq_t* roq) {
     if (video_ended || audio_ended) {
         roq_handle_end(roq);
         return FALSE;
-    } 
-    else {
-        roq->current_frame += 1;
     }
     
     return TRUE;
@@ -363,36 +369,33 @@ int roq_get_height(roq_t* roq) {
 }
 
 void roq_destroy(roq_t* roq) {
-    if(roq == NULL) {
+    if(!roq)
         return;
-    }
     
-    if(roq->buffer != NULL) {
+    if(roq->buffer) {
         roq_buffer_destroy(roq->buffer);
     }
 	
-    if(roq->frame[0] != NULL) {
-        free (roq->frame[0]);
+    if(roq->frame[0]) {
+        free(roq->frame[0]);
     }
     
-    if(roq->frame[1] != NULL) {
-        free (roq->frame[1]);
+    if(roq->frame[1]) {
+        free(roq->frame[1]);
     }
 
 	free(roq);
     roq = NULL;
 }
 
-void roq_seek(roq_t* roq) {
-    roq->frame_index = 0;
-    roq->current_frame = 0;
-    roq_buffer_set_offset(roq->buffer, CHUNK_HEADER_SIZE, SEEK_SET);
-}
-
 static void roq_handle_end(roq_t* roq) {
 	if (roq->loop) {
-		roq_seek(roq);
+		roq->frame_index = 0;
+        roq_buffer_set_offset(roq->buffer, CHUNK_HEADER_SIZE, SEEK_SET);
         roq->has_ended = FALSE;
+
+        if(roq->loop_callback)
+            roq->loop_callback();
 	}
 	else {
 		roq->has_ended = TRUE;
@@ -400,31 +403,15 @@ static void roq_handle_end(roq_t* roq) {
 }
 
 static roq_t* roq_create_with_buffer(roq_buffer_t* buffer) {
-    int i = 0;
+    int i;
     roq_chunk_t header;
     unsigned char* read_buffer;
-    roq_t* roq = (roq_t*)malloc(sizeof(roq_t));
+    roq_t* roq = malloc(sizeof(roq_t));
     memset(roq, 0, sizeof(roq_t));
 
     roq->loop = FALSE;
     roq->buffer = buffer;
     roq->frame_index = 0;
-    roq->current_frame = 0;
-
-    // Initialize Audio SQRT Look-Up Table
-    for(i = 0; i < 128; i++) {
-        roq->snd_sqr_array[i] = i * i;
-        roq->snd_sqr_array[i + 128] = -(roq->snd_sqr_array[i]);
-    }
-
-    // Initialize YUV420 -> RGB Math Look-Up Table helpers
-    for(i = 0; i < 256; i++) {
-        roq->yy_lut[i] = 1.164 * (i - 16);
-        roq->cr_r_lut[i] = 1.596 * (i - 128);
-        roq->cb_b_lut[i] = 2.017 * (i - 128);
-        roq->cr_g_lut[i] = -0.813 * (i - 128);
-        roq->cb_g_lut[i] = -0.392 * (i - 128);
-    }
 
     // Check if it has the ROQ signature header
     if(!roq_read_header_chunk(roq->buffer, &header)) {
@@ -481,19 +468,34 @@ static roq_t* roq_create_with_buffer(roq_buffer_t* buffer) {
             while (roq->stride < roq->width)
                 roq->stride <<= 1;
 
-            // (block / 2 * 8 * roq->stride) + (block % 2 * 8);
-            roq->block_offset_lut[0] = (0 / 2 * 8 * roq->stride) + (0 % 2 * 8);
-            roq->block_offset_lut[1] = (1 / 2 * 8 * roq->stride) + (1 % 2 * 8);
-            roq->block_offset_lut[2] = (2 / 2 * 8 * roq->stride) + (2 % 2 * 8);
-            roq->block_offset_lut[3] = (3 / 2 * 8 * roq->stride) + (3 % 2 * 8);
+            // Initialize Audio SQRT Look-Up Table
+            for(i = 0; i < 128; i++) {
+                roq->snd_sqr_array[i] = i * i;
+                roq->snd_sqr_array[i + 128] = -(roq->snd_sqr_array[i]);
+            }
 
-            // (subblock / 2 * 4 * stride) + (subblock % 2 * 4);
-            roq->subblock_offset_lut[0] = (0 / 2 * 4 * roq->stride) + (0 % 2 * 4);
-            roq->subblock_offset_lut[1] = (1 / 2 * 4 * roq->stride) + (1 % 2 * 4);
-            roq->subblock_offset_lut[2] = (2 / 2 * 4 * roq->stride) + (2 % 2 * 4);
-            roq->subblock_offset_lut[3] = (3 / 2 * 4 * roq->stride) + (3 % 2 * 4);
+            // Initialize YUV420 -> RGB Math Look-Up Table helpers
+            for(i = 0; i < 256; i++) {
+                roq->yy_lut[i] = 1.164 * (i - 16);
+                roq->cr_r_lut[i] = 1.596 * (i - 128);
+                roq->cb_b_lut[i] = 2.017 * (i - 128);
+                roq->cr_g_lut[i] = -0.813 * (i - 128);
+                roq->cb_g_lut[i] = -0.392 * (i - 128);
+            }
 
-            for(i =0; i<16; i++) {
+            for(i = 0; i < 4; i++) {
+                roq->block_offset_lut[i] = (i / 2 * 8 * roq->stride) + (i % 2 * 8);
+            }
+
+            for(i = 0; i < 4; i++) {
+                roq->subblock_offset_lut[i] = (i / 2 * 4 * roq->stride) + (i % 2 * 4);
+            }
+
+            for(i = 0; i < 4; i++) {
+                roq->unpack_4x4_lut[i] = (i / 2) * 8 + (i % 2) * 2;
+            }
+
+            for(i = 0; i < 16; i++) {
                 roq->upsample_offset_lut[i] = (i / 4 * 2 * roq->stride) + (i % 4 * 2);
             }
 
@@ -501,13 +503,21 @@ static roq_t* roq_create_with_buffer(roq_buffer_t* buffer) {
             while (roq->texture_height < roq->height)
                 roq->texture_height <<= 1;
 
-            printf("\tRoQ_INFO: dimensions = %dx%d, %dx%d; %d mbs, texture = %dx%d\n\n", 
+            printf(
+                "\tRoQ_INFO: dimensions = %dx%d,\n"
+                "\t%dx%d; %d mbs,\n"
+                "\ttexture = %dx%d,\n"
+                "\tframerate= %d fps\n\n", 
                 roq->width, roq->height, roq->mb_width, roq->mb_height,
-                roq->mb_count, roq->stride, roq->texture_height);
+                roq->mb_count, roq->stride, roq->texture_height, roq->framerate);
             fflush(stdout);
-
-            roq->frame[0] = (unsigned short*)memalign(32, roq->texture_height * roq->stride * sizeof(unsigned short));
-            roq->frame[1] = (unsigned short*)memalign(32, roq->texture_height * roq->stride * sizeof(unsigned short));
+#ifdef _arch_dreamcast
+            roq->frame[0] = memalign(32, roq->texture_height * roq->stride * sizeof(unsigned short));
+            roq->frame[1] = memalign(32, roq->texture_height * roq->stride * sizeof(unsigned short));
+#else
+            roq->frame[0] = malloc(roq->texture_height * roq->stride * sizeof(unsigned short));
+            roq->frame[1] = malloc(roq->texture_height * roq->stride * sizeof(unsigned short));
+#endif
             
             if (!roq->frame[0] || !roq->frame[1]) {
                 roq_destroy(roq);
@@ -517,7 +527,7 @@ static roq_t* roq_create_with_buffer(roq_buffer_t* buffer) {
 
             memset(roq->frame[0], 0, roq->texture_height * roq->stride * sizeof(unsigned short));
             memset(roq->frame[1], 0, roq->texture_height * roq->stride * sizeof(unsigned short));
-        } 
+        }
         else {
             roq_buffer_set_offset(roq->buffer, header.chunk_size, SEEK_CUR);
         }
@@ -681,11 +691,6 @@ static int roq_unpack_quad_codebook(roq_t* roq, unsigned char *buf, int size, in
     if (!count4x4 && count2x2 * 6 < size)
         count4x4 = ROQ_CODEBOOK_SIZE;
 
-    /* size sanity check */
-    if ((count2x2 * 6 + count4x4 * 4) != size) {
-        return FALSE;
-    }
-
     /* unpack the 2x2 vectors */
     for (i = 0; i < count2x2; i++) {
         /* unpack the YUV components from the bytestream */
@@ -717,7 +722,7 @@ static int roq_unpack_quad_codebook(roq_t* roq, unsigned char *buf, int size, in
     for (i = 0; i < count4x4; i++) {
         for (j = 0; j < 4; j++) {
             v2x2 = roq->cb2x2_rgb565[*buf++];
-            v4x4 = roq->cb4x4_rgb565[i] + (j / 2) * 8 + (j % 2) * 2;
+            v4x4 = roq->cb4x4_rgb565[i] + roq->unpack_4x4_lut[j];
             v4x4[0] = v2x2[0];
             v4x4[1] = v2x2[1];
             v4x4[4] = v2x2[2];
@@ -728,13 +733,7 @@ static int roq_unpack_quad_codebook(roq_t* roq, unsigned char *buf, int size, in
     return TRUE;
 }
 
-#define GET_BYTE(x) \
-    if (index >= size) { \
-        status = FALSE; \
-        x = 0; \
-    } else { \
-        x = buf[index++]; \
-    }
+#define GET_BYTE(x) x = buf[index++];
 
 #define GET_MODE() \
     if (!mode_count) { \
@@ -746,28 +745,7 @@ static int roq_unpack_quad_codebook(roq_t* roq, unsigned char *buf, int size, in
     mode_count -= 2; \
     mode = (mode_set >> mode_count) & 0x03;
 
-// inline void get_byte(int *index, int size, int *status, unsigned char *x, unsigned char *buf) {
-//     if (*index >= size) {
-//         *status = FALSE;
-//         *x = 0;
-//     } else {
-//         *x = buf[(*index)++];
-//     }
-// }
-
-// inline void get_mode(int *mode_count, int *mode_set, int *mode, unsigned char *mode_lo, unsigned char *mode_hi) {
-//     if (!*mode_count) {
-//         get_byte(mode_lo);
-//         get_byte(mode_hi);
-//         *mode_set = (*mode_hi << 8) | *mode_lo;
-//         *mode_count = 16;
-//     }
-//     *mode_count -= 2;
-//     *mode = (*mode_set >> *mode_count) & 0x03;
-// }
-
 static unsigned short* roq_unpack_vq(roq_t* roq, unsigned char* buf, int size, unsigned int arg) {
-    int status = TRUE;
     int mb_x, mb_y;
     int block;     /* 8x8 blocks */
     int subblock;  /* 4x4 blocks */
@@ -815,11 +793,11 @@ static unsigned short* roq_unpack_vq(roq_t* roq, unsigned char* buf, int size, u
         last_frame = (unsigned short*)roq->frame[1];
     }
 
-    for (mb_y = 0; mb_y < roq->mb_height && status == TRUE; mb_y++) {
+    for (mb_y = 0; mb_y < roq->mb_height; mb_y++) {
         line_offset = mb_y * 16 * stride;
-        for (mb_x = 0; mb_x < roq->mb_width && status == TRUE; mb_x++) {
+        for (mb_x = 0; mb_x < roq->mb_width; mb_x++) {
             mb_offset = line_offset + mb_x * 16;
-            for (block = 0; block < 4 && status == TRUE; block++) {
+            for (block = 0; block < 4; block++) {
                 block_offset = mb_offset + roq->block_offset_lut[block];
                 /* each 8x8 block gets a mode */
                 GET_MODE();
@@ -946,11 +924,6 @@ static unsigned short* roq_unpack_vq(roq_t* roq, unsigned char* buf, int size, u
                 }
             }
         }
-    }
-
-    /* sanity check to see if the stream was fully consumed */
-    if (status == FALSE || (status == TRUE && index < size-2)) {
-        return NULL;
     }
 
     return this_frame;
