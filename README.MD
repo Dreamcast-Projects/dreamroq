@@ -11,7 +11,7 @@
 ## About The Project
 Dreamroq is a RoQ playback library specifically designed for the Sega Dreamcast video game console. RoQ is a relatively simple video file format developed for video-heavy CD-ROM games. Learn more about the RoQ format [HERE](http://wiki.multimedia.cx/index.php?title=RoQ).
 
-The Dreamroq library consists of two parts: the decoder (dreamroqlib.h/c) and the player (roq-player.h/c). The decoder was initially written by Mike Melanson and later updated by Josh "PH3NOM" Pearson to include audio decoding. The dreamcast-player.c was replaced with two files, roq-player.h/c, to simplify the integration of the library into Dreamcast applications. The player component is designed to run under the KallistiOS (KOS) open-source operating system. Learn more about KOS [HERE](http://gamedev.allusion.net/softprj/kos/).
+The Dreamroq library consists of two parts: the decoder (dreamroqlib.h/c) and the player (roq-player.h/c). The decoder was initially written by Mike Melanson and later updated by Josh "PH3NOM" Pearson to include audio decoding. The dreamcast-player.c was replaced with two files, roq-player.h/c, to simplify the integration of the library into Dreamcast applications. The player component is designed to run under the KallistiOS (KOS) open-source operating system. Learn more about [KOS](http://gamedev.allusion.net/softprj/kos/).
 
 The library also features a sample testing utility that can be built and executed on Unix systems, which is useful for debugging and validation.
 
