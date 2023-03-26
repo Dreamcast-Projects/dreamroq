@@ -41,12 +41,13 @@ int main()
 {
     vid_set_mode(DM_640x480_NTSC_IL, PM_RGB565);
 
-    player_init();
-    player = player_create("/rd/roguelogo.roq");
-    //player_set_loop(player, 1);
-    player_play(player, frame_cb);
+    if(player_init()) {
+        player = player_create("/cd/saintro.roq");
+        //player_set_loop(player, 1);
+        player_play(player, frame_cb);
 
-    player_shutdown(player);
-
+        player_shutdown(player);
+    }
+    
     return 0;
 }
