@@ -269,7 +269,7 @@ int roq_decode(roq_t* roq) {
                         unsigned short* frame = roq_unpack_vq(roq, read_buffer, header.chunk_size, header.chunk_arg);
                         if(frame) {
                             video_decoded = TRUE;
-                            roq->video_decode_callback(frame, roq->width, roq->height, roq->stride, roq->texture_height);
+                            roq->video_decode_callback(frame, roq->width, roq->height, roq->stride, roq->texture_height, NULL);
                         }
                         else {
                             roq_errno = ROQ_BAD_VQ_STREAM;
@@ -301,7 +301,7 @@ int roq_decode(roq_t* roq) {
                             roq->pcm_sample[i * 2 + 1] = (snd_left & 0xff00) >> 8;
                         }
                         audio_decoded = TRUE;
-                        roq->audio_decode_callback(roq->pcm_sample, roq->pcm_samples, roq->channels);
+                        roq->audio_decode_callback(roq->pcm_sample, roq->pcm_samples, roq->channels, NULL);
                     }
                     break;
                 case RoQ_SOUND_STEREO:
@@ -333,7 +333,7 @@ int roq_decode(roq_t* roq) {
                             roq->pcm_sample[i * 2 + 3] = (snd_right & 0xff00) >> 8;
                         }
                         audio_decoded = TRUE;
-                        roq->audio_decode_callback(roq->pcm_sample, roq->pcm_samples, roq->channels);
+                        roq->audio_decode_callback(roq->pcm_sample, roq->pcm_samples, roq->channels, NULL);
                     }
                     break;
                 default:
@@ -395,7 +395,7 @@ static void roq_handle_end(roq_t* roq) {
         roq->has_ended = FALSE;
 
         if(roq->loop_callback)
-            roq->loop_callback();
+            roq->loop_callback(NULL);
 	}
 	else {
 		roq->has_ended = TRUE;

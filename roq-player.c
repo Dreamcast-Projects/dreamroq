@@ -73,9 +73,9 @@ typedef struct {
 static void* player_snd_thread();
 static void* aica_callback(snd_stream_hnd_t hnd, int req, int* done);
 
-static void roq_loop_cb(void);
-static void roq_video_cb(unsigned short *buf, int width, int height, int stride, int texture_height);
-static void roq_audio_cb(unsigned char *buf, int size, int channels);
+static void roq_loop_cb(void* user_data);
+static void roq_video_cb(unsigned short *buf, int width, int height, int stride, int texture_height, void* user_data);
+static void roq_audio_cb(unsigned char *buf, int size, int channels, void* user_data);
 
 static void initialize_defaults(roq_player_t* player, int index);
 static int initialize_graphics(int width, int height);
@@ -109,11 +109,11 @@ int player_init(void) {
     thread = thd_create(0, player_snd_thread, NULL);
     if(thread != NULL) {
 		snd_stream.status = SND_STREAM_STATUS_READY;
-        return SUCCESS;
+        return PLAYER_SUCCESS;
 	}
     else {
         snd_stream.status = SND_STREAM_STATUS_ERROR;
-        return ERROR;
+        return PLAYER_ERROR;
     }
 }
 
@@ -159,7 +159,7 @@ roq_player_t* player_create(const char* filename) {
     roq_player_t* player = NULL;
     
     if(filename == NULL) {
-        player_errno = SOURCE_ERROR;
+        player_errno = PLAYER_SOURCE_ERROR;
         return NULL;
     }
 
@@ -167,21 +167,21 @@ roq_player_t* player_create(const char* filename) {
 
     if(index == SND_STREAM_INVALID) {
         snd_stream_destroy(index);
-        player_errno = SND_INIT_FAILURE;
+        player_errno = PLAYER_SND_INIT_FAILURE;
         return NULL;
     }
 
     player = malloc(sizeof(roq_player_t));
     if(!player) {
         snd_stream_destroy(index);
-        player_errno = OUT_OF_MEMORY;
+        player_errno = PLAYER_OUT_OF_MEMORY;
         return NULL;
     }
 
     player->decoder = roq_create_with_filename(filename);
     if(!player->decoder) {
         snd_stream_destroy(index);
-        player_errno = FORMAT_INIT_FAILURE;
+        player_errno = PLAYER_FORMAT_INIT_FAILURE;
         return NULL;
     }
 
@@ -195,7 +195,7 @@ roq_player_t* player_create_file(FILE* file) {
     roq_player_t* player = NULL;
 
     if(file == NULL) {
-        player_errno = SOURCE_ERROR;
+        player_errno = PLAYER_SOURCE_ERROR;
         return NULL;
     }
     
@@ -203,21 +203,21 @@ roq_player_t* player_create_file(FILE* file) {
 
     if(index == SND_STREAM_INVALID) {
         snd_stream_destroy(index);
-        player_errno = SND_INIT_FAILURE;
+        player_errno = PLAYER_SND_INIT_FAILURE;
         return NULL;
     }
 
     player = malloc(sizeof(roq_player_t));
     if(!player) {
         snd_stream_destroy(index);
-        player_errno = OUT_OF_MEMORY;
+        player_errno = PLAYER_OUT_OF_MEMORY;
         return NULL;
     }
 
     player->decoder = roq_create_with_file(file, 1);
     if(!player->decoder) {
         snd_stream_destroy(index);
-        player_errno = FORMAT_INIT_FAILURE;
+        player_errno = PLAYER_FORMAT_INIT_FAILURE;
         return NULL;
     }
 
@@ -233,27 +233,27 @@ roq_player_t* player_create_memory(unsigned char* memory, const unsigned int len
     index = snd_stream_alloc(aica_callback, SND_STREAM_BUFFER_MAX/4);
 
     if(memory == NULL) {
-        player_errno = SOURCE_ERROR;
+        player_errno = PLAYER_SOURCE_ERROR;
         return NULL;
     }
 
     if(index == SND_STREAM_INVALID) {
         snd_stream_destroy(index);
-        player_errno = SND_INIT_FAILURE;
+        player_errno = PLAYER_SND_INIT_FAILURE;
         return NULL;
     }
 
     player = malloc(sizeof(roq_player_t));
     if(!player) {
         snd_stream_destroy(index);
-        player_errno = OUT_OF_MEMORY;
+        player_errno = PLAYER_OUT_OF_MEMORY;
         return NULL;
     }
 
     player->decoder = roq_create_with_memory(memory, length, 1);
     if(!player->decoder) {
         snd_stream_destroy(index);
-        player_errno = FORMAT_INIT_FAILURE;
+        player_errno = PLAYER_FORMAT_INIT_FAILURE;
         return NULL;
     }
 
@@ -338,12 +338,12 @@ int player_has_ended(roq_player_t* player) {
     return roq_has_ended(player->decoder);
 }
 
-static void roq_loop_cb(void) {
+static void roq_loop_cb(void* user_data) {
     frame = 0;
     samples_done = 0;
 }
 
-static void roq_video_cb(unsigned short *texture_data, int width, int height, int stride, int texture_height) {
+static void roq_video_cb(unsigned short *texture_data, int width, int height, int stride, int texture_height, void* user_data) {
 
     dcache_flush_range((uint32)texture_data, vid_stream.texture_byte_length);   // dcache flush is needed when using DMA
     pvr_txr_load_dma(texture_data, vid_stream.textures[vid_stream.frame_index], vid_stream.texture_byte_length, 1, NULL, 0);
@@ -368,7 +368,7 @@ static void roq_video_cb(unsigned short *texture_data, int width, int height, in
     vid_stream.frame_index = !vid_stream.frame_index;
 }
 
-static void roq_audio_cb(unsigned char *audio_data, int data_length, int channels) {
+static void roq_audio_cb(unsigned char *audio_data, int data_length, int channels, void* user_data) {
     snd_stream.channels = channels;
 
     mutex_lock(&snd_stream.decode_buffer_mut);
@@ -424,13 +424,13 @@ static void initialize_defaults(roq_player_t* player, int index) {
 
 static int initialize_graphics(int width, int height) {
     if(vid_stream.initialized)
-        return SUCCESS;
+        return PLAYER_SUCCESS;
 
     vid_stream.texture_byte_length = width * height * 2;
     vid_stream.textures[0] = pvr_mem_malloc(vid_stream.texture_byte_length);
     vid_stream.textures[1] = pvr_mem_malloc(vid_stream.texture_byte_length);
     if (!vid_stream.textures[0] || !vid_stream.textures[1])
-        return OUT_OF_VID_MEMORY;
+        return PLAYER_OUT_OF_VID_MEMORY;
 
     pvr_poly_cxt_t cxt;
 
@@ -476,12 +476,12 @@ static int initialize_graphics(int width, int height) {
 
     vid_stream.initialized = 1;
 
-    return SUCCESS;
+    return PLAYER_SUCCESS;
 }
 
 static int initialize_audio(void) {
     if(snd_stream.initialized)
-        return SUCCESS;
+        return PLAYER_SUCCESS;
 
     snd_stream.decode_buffer.head = 0;
     snd_stream.decode_buffer.tail = 0;
@@ -489,13 +489,13 @@ static int initialize_audio(void) {
     snd_stream.decode_buffer.capacity = AUDIO_DECODE_BUFFER_SIZE;
     snd_stream.decode_buffer.buffer = malloc(AUDIO_DECODE_BUFFER_SIZE);
     if(snd_stream.decode_buffer.buffer == NULL)
-        return OUT_OF_MEMORY;
+        return PLAYER_OUT_OF_MEMORY;
     
     mutex_init(&snd_stream.decode_buffer_mut, MUTEX_TYPE_NORMAL);
 
     snd_stream.initialized = 1;
     
-    return SUCCESS;
+    return PLAYER_SUCCESS;
 }
 
 static void* player_snd_thread() {

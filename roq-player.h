@@ -14,13 +14,13 @@ extern "C" {
 
 #include <stdio.h>
 
-#define ERROR                 0x00
-#define SUCCESS               0x01
-#define OUT_OF_MEMORY         0x02
-#define OUT_OF_VID_MEMORY     0x03
-#define SND_INIT_FAILURE      0x04
-#define FORMAT_INIT_FAILURE   0x05
-#define SOURCE_ERROR          0x06
+#define PLAYER_ERROR                 0x00
+#define PLAYER_SUCCESS               0x01
+#define PLAYER_OUT_OF_MEMORY         0x02
+#define PLAYER_OUT_OF_VID_MEMORY     0x03
+#define PLAYER_SND_INIT_FAILURE      0x04
+#define PLAYER_FORMAT_INIT_FAILURE   0x05
+#define PLAYER_SOURCE_ERROR          0x06
 
 // Stores the above values
 extern int player_errno;
