@@ -1,6 +1,9 @@
 #include <dc/pvr.h>
 #include <dc/maple.h>
+#include <dc/video.h>
 #include <dc/maple/controller.h>
+
+#include <arch/arch.h>
 
 #include <stdlib.h>
 
