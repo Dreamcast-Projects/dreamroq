@@ -19,9 +19,9 @@ Find more RoQ sample files [HERE](http://samples.mplayerhq.hu/game-formats/idroq
 
 RoQ files can be created using the [FFMEG](http://ffmpeg.org/) encoder:
 
-```ffmpeg -i input.mp4 -r 30 -ar 22050 -s 512x512 output.roq -threads 2```
+```ffmpeg -i input.mp4 -r 30 -ar 22050 -vf "scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2" output.roq -threads 2```
 
-This command will convert your input video into a 512x512, 30 fps RoQ video with 22050 Hz audio.
+This command will convert your input video into a 512x512 (keeping video aspect ratio with letterboxing), 30 fps RoQ video with 22050 Hz audio.
 
 
 <!-- Building (Dreamcast) -->

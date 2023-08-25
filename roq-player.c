@@ -83,11 +83,12 @@ static int initialize_audio(void);
 
 static int ring_buffer_write(ring_buffer *rb, const unsigned char *data, int data_length);
 static int ring_buffer_read(ring_buffer *rb, unsigned char *data, int data_length);
+static int ring_buffer_underflow(ring_buffer *rb, int data_length);
 
 static video_hndlr vid_stream;
 static sound_hndlr snd_stream;
 
-static kthread_t* thread;
+static kthread_t* audio_thread;
 
 static int playing_loop;
 
@@ -106,8 +107,8 @@ int player_init(void) {
     snd_stream.rate = ROQ_SAMPLE_RATE;
     snd_stream.status = SND_STREAM_STATUS_NULL;
 
-    thread = thd_create(0, player_snd_thread, NULL);
-    if(thread != NULL) {
+    audio_thread = thd_create(0, player_snd_thread, NULL);
+    if(audio_thread != NULL) {
 		snd_stream.status = SND_STREAM_STATUS_READY;
         return PLAYER_SUCCESS;
 	}
@@ -123,7 +124,7 @@ void player_shutdown(roq_player_t* player) {
     samples_done = 0;
     playing_loop = 0;
 
-    thd_join(thread, NULL);
+    thd_join(audio_thread, NULL);
 
     if(snd_stream.shnd != SND_STREAM_INVALID) {
         snd_stream_stop(snd_stream.shnd);
@@ -344,14 +345,15 @@ static void roq_loop_cb(void* user_data) {
 }
 
 static void roq_video_cb(unsigned short *texture_data, int width, int height, int stride, int texture_height, void* user_data) {
-
+    // DMA causes artifacts
     dcache_flush_range((uint32)texture_data, vid_stream.texture_byte_length);   // dcache flush is needed when using DMA
     pvr_txr_load_dma(texture_data, vid_stream.textures[vid_stream.frame_index], vid_stream.texture_byte_length, 1, NULL, 0);
+    //pvr_txr_load(texture_data, vid_stream.textures[vid_stream.frame_index], stride * texture_height * 2);
 
     VTS = ++frame / (double)vid_stream.framerate;
     while(ATS < VTS)
-        thd_pass();
-
+        thd_sleep(1);
+        
     pvr_wait_ready();
     pvr_scene_begin();
     pvr_list_begin(PVR_LIST_OP_POLY);
@@ -373,23 +375,19 @@ static void roq_audio_cb(unsigned char *audio_data, int data_length, int channel
 
     mutex_lock(&snd_stream.decode_buffer_mut);
 
-    int success = ring_buffer_write(&snd_stream.decode_buffer, audio_data, data_length);
-    if (!success) {
-        printf("Buffer Overflow\n\n");
-        fflush(stdout);
-    }
+    ring_buffer_write(&snd_stream.decode_buffer, audio_data, data_length);
 
     mutex_unlock(&snd_stream.decode_buffer_mut);
 }
 
 static void* aica_callback(snd_stream_hnd_t hnd, int bytes_needed, int* bytes_returning) {
+
+    if(ring_buffer_underflow(&snd_stream.decode_buffer, bytes_needed))
+        thd_pass();
+
     mutex_lock(&snd_stream.decode_buffer_mut);
 
-    int success = ring_buffer_read(&snd_stream.decode_buffer, snd_stream.pcm_buffer, bytes_needed);
-    if (!success) {
-        printf("Buffer Underflow\n\n");
-        fflush(stdout);
-    }
+    ring_buffer_read(&snd_stream.decode_buffer, snd_stream.pcm_buffer, bytes_needed);
 
     mutex_unlock(&snd_stream.decode_buffer_mut);
 
@@ -434,9 +432,9 @@ static int initialize_graphics(int width, int height) {
 
     pvr_poly_cxt_t cxt;
 
-    pvr_poly_cxt_txr(&cxt, PVR_LIST_OP_POLY, PVR_TXRFMT_RGB565 | PVR_TXRFMT_NONTWIDDLED, width, height, vid_stream.textures[0], PVR_FILTER_BILINEAR); //PVR_FILTER_NONE
+    pvr_poly_cxt_txr(&cxt, PVR_LIST_OP_POLY, PVR_TXRFMT_RGB565 | PVR_TXRFMT_NONTWIDDLED, width, height, vid_stream.textures[0], PVR_FILTER_NONE);// PVR_FILTER_BILINEAR); //PVR_FILTER_NONE
     pvr_poly_compile(&vid_stream.hdr[0], &cxt);
-    pvr_poly_cxt_txr(&cxt, PVR_LIST_OP_POLY, PVR_TXRFMT_RGB565 | PVR_TXRFMT_NONTWIDDLED, width, height, vid_stream.textures[1], PVR_FILTER_BILINEAR); //PVR_FILTER_NONE
+    pvr_poly_cxt_txr(&cxt, PVR_LIST_OP_POLY, PVR_TXRFMT_RGB565 | PVR_TXRFMT_NONTWIDDLED, width, height, vid_stream.textures[1], PVR_FILTER_NONE); //PVR_FILTER_BILINEAR); //PVR_FILTER_NONE
     pvr_poly_compile(&vid_stream.hdr[1], &cxt);
     
     vid_stream.vert[0].z     = vid_stream.vert[1].z     = vid_stream.vert[2].z     = vid_stream.vert[3].z     = 1.0f; 
@@ -521,7 +519,7 @@ static void* player_snd_thread() {
                 break;
             case SND_STREAM_STATUS_STREAMING:
                 snd_stream_poll(snd_stream.shnd);
-                thd_sleep(20);
+                thd_sleep(10);
                 break;
         }
     }
@@ -555,4 +553,12 @@ static int ring_buffer_read(ring_buffer *rb, unsigned char *data, int data_lengt
 
     rb->size -= data_length;
     return 1;
+}
+
+static int ring_buffer_underflow(ring_buffer *rb, int data_length) {
+    if (data_length > rb->size) {
+        return 1;
+    }
+
+    return 0;
 }
