@@ -346,9 +346,9 @@ static void roq_loop_cb(void* user_data) {
 
 static void roq_video_cb(unsigned short *texture_data, int width, int height, int stride, int texture_height, void* user_data) {
     // DMA causes artifacts
-    dcache_flush_range((uint32)texture_data, vid_stream.texture_byte_length);   // dcache flush is needed when using DMA
-    pvr_txr_load_dma(texture_data, vid_stream.textures[vid_stream.frame_index], vid_stream.texture_byte_length, 1, NULL, 0);
-    //pvr_txr_load(texture_data, vid_stream.textures[vid_stream.frame_index], stride * texture_height * 2);
+    // dcache_flush_range((uint32)texture_data, vid_stream.texture_byte_length);   // dcache flush is needed when using DMA
+    // pvr_txr_load_dma(texture_data, vid_stream.textures[vid_stream.frame_index], vid_stream.texture_byte_length, 1, NULL, 0);
+    pvr_txr_load(texture_data, vid_stream.textures[vid_stream.frame_index], stride * texture_height * 2);
 
     VTS = ++frame / (double)vid_stream.framerate;
     while(ATS < VTS)
