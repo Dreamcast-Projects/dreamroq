@@ -44,7 +44,7 @@ typedef struct {
     int capacity;
 } ring_buffer;
 
-#define AUDIO_BUFFER_SIZE 1024*160
+#define AUDIO_BUFFER_SIZE 1024*80
 #define AUDIO_DECODE_BUFFER_SIZE 1024*1024
 typedef int snd_stream_hnd_t;
 
@@ -63,7 +63,8 @@ typedef struct {
 typedef struct {
     int framerate;
     int initialized;
-    int frame_index;
+    int load_frame_index;
+    int render_frame_index;
     int texture_byte_length;
     pvr_ptr_t textures[2];
     pvr_poly_hdr_t hdr[2];
@@ -72,6 +73,8 @@ typedef struct {
 
 static void* player_snd_thread();
 static void* aica_callback(snd_stream_hnd_t hnd, int req, int* done);
+
+static void* player_rndr_thread();
 
 static void roq_loop_cb(void* user_data);
 static void roq_video_cb(unsigned short *buf, int width, int height, int stride, int texture_height, void* user_data);
@@ -84,6 +87,7 @@ static int initialize_audio(void);
 static int ring_buffer_write(ring_buffer *rb, const unsigned char *data, int data_length);
 static int ring_buffer_read(ring_buffer *rb, unsigned char *data, int data_length);
 static int ring_buffer_underflow(ring_buffer *rb, int data_length);
+static int ring_buffer_overflow(ring_buffer *rb, int data_length);
 
 static unsigned int get_current_time();
 
@@ -92,11 +96,16 @@ static sound_hndlr snd_stream;
 
 static kthread_t* audio_thread;
 
+static kthread_t* render_thread;
+static semaphore_t frames_semaphore;
+static semaphore_t load_semaphore;
+static unsigned int last_rendered_frame_index;
+
 static int playing_loop;
 
 // Used to keep video @ 30fps
-static unsigned int last_frame_time = 0;
-static unsigned int target_frame_time = 1000 / 30; // Target frame time in milliseconds
+static unsigned int last_frame_time;
+static const unsigned int target_frame_time = 1000 / 30; // Target frame time in milliseconds
 
 int player_init(void) {
     snd_stream_init();
@@ -110,12 +119,24 @@ int player_init(void) {
     audio_thread = thd_create(0, player_snd_thread, NULL);
     if(audio_thread != NULL) {
 		snd_stream.status = SND_STREAM_STATUS_READY;
-        return PLAYER_SUCCESS;
 	}
     else {
         snd_stream.status = SND_STREAM_STATUS_ERROR;
         return PLAYER_ERROR;
     }
+
+    render_thread = thd_create(0, player_rndr_thread, NULL);
+    if(render_thread != NULL) {
+        //return PLAYER_SUCCESS;
+	}
+    else {
+        return PLAYER_ERROR;
+    }
+
+    sem_init(&frames_semaphore, 0); // No frames available initially
+    sem_init(&load_semaphore, 2);   // Allow up to 2 frames to be loaded
+
+    return PLAYER_SUCCESS;
 }
 
 void player_shutdown(roq_player_t* player) {
@@ -123,7 +144,6 @@ void player_shutdown(roq_player_t* player) {
     playing_loop = 0;
 
     thd_join(audio_thread, NULL);
-
     if(snd_stream.shnd != SND_STREAM_INVALID) {
         snd_stream_stop(snd_stream.shnd);
         snd_stream_destroy(snd_stream.shnd);
@@ -132,13 +152,18 @@ void player_shutdown(roq_player_t* player) {
         snd_stream.status = SND_STREAM_STATUS_NULL;
     }
 
+    thd_join(render_thread, NULL);
     if(vid_stream.initialized) {
         vid_stream.initialized = 0;
-        vid_stream.frame_index = 0;
+        vid_stream.load_frame_index = 0;
+        vid_stream.render_frame_index = 0;
         vid_stream.texture_byte_length = 0;
         pvr_mem_free(vid_stream.textures[0]);
         pvr_mem_free(vid_stream.textures[1]);
     }
+
+    sem_destroy(&frames_semaphore);
+    sem_destroy(&load_semaphore);
 
     if(snd_stream.initialized) {
         snd_stream.initialized = 0;
@@ -338,39 +363,83 @@ int player_has_ended(roq_player_t* player) {
 static void roq_loop_cb(void* user_data) {
 }
 
+// The video decoder calls this to load the decoded video frame into video memory
 static void roq_video_cb(unsigned short *texture_data, int width, int height, int stride, int texture_height, void* user_data) {
+    //printf("DECODING\n");
+
+    // Wait for a slot to be available for loading (2 available)
+    sem_wait(&load_semaphore);
+
+    //printf("Before loading index %d\n", vid_stream.load_frame_index);
+
     // DMA causes artifacts
     // dcache_flush_range((uint32)texture_data, vid_stream.texture_byte_length);   // dcache flush is needed when using DMA
-    // pvr_txr_load_dma(texture_data, vid_stream.textures[vid_stream.frame_index], vid_stream.texture_byte_length, 1, NULL, 0);
-    pvr_txr_load(texture_data, vid_stream.textures[vid_stream.frame_index], stride * texture_height * 2);
+    // pvr_txr_load_dma(texture_data, vid_stream.textures[vid_stream.load_frame_index], vid_stream.texture_byte_length, 1, NULL, 0);
+    pvr_txr_load(texture_data, vid_stream.textures[vid_stream.load_frame_index], stride * texture_height * 2);
 
-    unsigned int elapsed_time = get_current_time() - last_frame_time; // Calculate elapsed time since last frame
-    //printf("%u\n", elapsed_time);
-    if (elapsed_time < target_frame_time) {
-        thd_sleep(target_frame_time - elapsed_time);
+    //printf("%d Frame Loaded\n", vid_stream.load_frame_index);
+    vid_stream.load_frame_index = !vid_stream.load_frame_index;
+    
+    // Let render thread know that we have some frames that need rendering
+    sem_signal(&frames_semaphore);
+
+    //printf("DECODING END\n");
+}
+
+// This thread waits for frames to be loaded into video ram before rendering them on the screen
+static void* player_rndr_thread() {
+
+    while(snd_stream.status != SND_STREAM_STATUS_DONE && snd_stream.status != SND_STREAM_STATUS_ERROR) {
+        switch(snd_stream.status)
+        {
+            case SND_STREAM_STATUS_STREAMING:
+                // Wait for frames to be ready
+                sem_wait(&frames_semaphore);
+
+                unsigned int current_time = get_current_time();
+                //printf("CT: %d\n", current_time);
+                unsigned int elapsed_time = current_time - last_frame_time; // Calculate elapsed time since last frame ended
+                printf("ET: %d\n", elapsed_time);
+                
+                if (elapsed_time < target_frame_time) {
+                    thd_sleep(target_frame_time - elapsed_time - 2);
+                }
+
+                //printf("RENDERING %d\n", vid_stream.render_frame_index);
+
+                pvr_wait_ready();
+                pvr_scene_begin();
+                pvr_list_begin(PVR_LIST_OP_POLY);
+
+                pvr_prim(&vid_stream.hdr[vid_stream.render_frame_index], sizeof(pvr_poly_hdr_t));
+                pvr_prim(&vid_stream.vert[0], sizeof(pvr_vertex_t));
+                pvr_prim(&vid_stream.vert[1], sizeof(pvr_vertex_t));
+                pvr_prim(&vid_stream.vert[2], sizeof(pvr_vertex_t));
+                pvr_prim(&vid_stream.vert[3], sizeof(pvr_vertex_t));
+
+                pvr_list_finish();
+                pvr_scene_finish();
+                
+                //printf("%d Frame Rendered\n", vid_stream.render_frame_index);
+                vid_stream.render_frame_index = !vid_stream.render_frame_index;
+
+                last_frame_time = get_current_time(); // Get time the frame ended
+                
+                // Signal that we rendered a frame and can load another one
+                sem_signal(&load_semaphore);
+                //printf("Frames Sema %d\n", sem_count(&frames_semaphore));
+                break;
+        }
     }
 
-    pvr_wait_ready();
-    pvr_scene_begin();
-    pvr_list_begin(PVR_LIST_OP_POLY);
-
-    pvr_prim(&vid_stream.hdr[vid_stream.frame_index], sizeof(pvr_poly_hdr_t));
-    pvr_prim(&vid_stream.vert[0], sizeof(pvr_vertex_t));
-    pvr_prim(&vid_stream.vert[1], sizeof(pvr_vertex_t));
-    pvr_prim(&vid_stream.vert[2], sizeof(pvr_vertex_t));
-    pvr_prim(&vid_stream.vert[3], sizeof(pvr_vertex_t));
-
-    pvr_list_finish();
-    pvr_scene_finish();
-    
-    // Update the last frame time
-    last_frame_time = get_current_time();
-
-    vid_stream.frame_index = !vid_stream.frame_index;
+    return NULL;
 }
 
 static void roq_audio_cb(unsigned char *audio_data, int data_length, int channels, void* user_data) {
     snd_stream.channels = channels;
+
+    if(ring_buffer_overflow(&snd_stream.decode_buffer, data_length))
+        thd_pass();
 
     mutex_lock(&snd_stream.decode_buffer_mut);
 
@@ -399,6 +468,8 @@ static void initialize_defaults(roq_player_t* player, int index) {
     roq_set_video_decode_callback(player->decoder, roq_video_cb);
     roq_set_audio_decode_callback(player->decoder, roq_audio_cb);
 
+    last_frame_time = 0;
+    last_rendered_frame_index = 0;
     vid_stream.framerate = roq_get_framerate(player->decoder);
 
     snd_stream.shnd = index;
@@ -509,7 +580,7 @@ static void* player_snd_thread() {
                 break;
             case SND_STREAM_STATUS_STREAMING:
                 snd_stream_poll(snd_stream.shnd);
-                thd_sleep(10);
+                thd_sleep(20);
                 break;
         }
     }
@@ -547,6 +618,14 @@ static int ring_buffer_read(ring_buffer *rb, unsigned char *data, int data_lengt
 
 static int ring_buffer_underflow(ring_buffer *rb, int data_length) {
     if (data_length > rb->size) {
+        return 1;
+    }
+
+    return 0;
+}
+
+static int ring_buffer_overflow(ring_buffer *rb, int data_length) {
+    if (data_length > rb->capacity - rb->size) {
         return 1;
     }
 
