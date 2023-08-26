@@ -44,8 +44,8 @@ typedef struct {
     int capacity;
 } ring_buffer;
 
-#define AUDIO_BUFFER_SIZE 1024*80
-#define AUDIO_DECODE_BUFFER_SIZE 1024*128
+#define AUDIO_BUFFER_SIZE 1024*160
+#define AUDIO_DECODE_BUFFER_SIZE 1024*1024
 typedef int snd_stream_hnd_t;
 
 typedef struct {
@@ -85,6 +85,8 @@ static int ring_buffer_write(ring_buffer *rb, const unsigned char *data, int dat
 static int ring_buffer_read(ring_buffer *rb, unsigned char *data, int data_length);
 static int ring_buffer_underflow(ring_buffer *rb, int data_length);
 
+static unsigned int get_current_time();
+
 static video_hndlr vid_stream;
 static sound_hndlr snd_stream;
 
@@ -92,11 +94,9 @@ static kthread_t* audio_thread;
 
 static int playing_loop;
 
-// Used to keep video and audio in sync
-static unsigned int frame;
-static unsigned long samples_done;
-static float ATS, VTS;
-static double audio_samples_per_sec;
+// Used to keep video @ 30fps
+static unsigned int last_frame_time = 0;
+static unsigned int target_frame_time = 1000 / 30; // Target frame time in milliseconds
 
 int player_init(void) {
     snd_stream_init();
@@ -120,8 +120,6 @@ int player_init(void) {
 
 void player_shutdown(roq_player_t* player) {
     snd_stream.status = SND_STREAM_STATUS_DONE;
-    frame = 0;
-    samples_done = 0;
     playing_loop = 0;
 
     thd_join(audio_thread, NULL);
@@ -299,8 +297,6 @@ void player_pause(roq_player_t* player) {
 }
 
 void player_stop(roq_player_t* player) {
-    frame = 0;
-    samples_done = 0;
     player->paused = 1;
     roq_rewind(player->decoder);
 
@@ -340,8 +336,6 @@ int player_has_ended(roq_player_t* player) {
 }
 
 static void roq_loop_cb(void* user_data) {
-    frame = 0;
-    samples_done = 0;
 }
 
 static void roq_video_cb(unsigned short *texture_data, int width, int height, int stride, int texture_height, void* user_data) {
@@ -350,10 +344,12 @@ static void roq_video_cb(unsigned short *texture_data, int width, int height, in
     // pvr_txr_load_dma(texture_data, vid_stream.textures[vid_stream.frame_index], vid_stream.texture_byte_length, 1, NULL, 0);
     pvr_txr_load(texture_data, vid_stream.textures[vid_stream.frame_index], stride * texture_height * 2);
 
-    VTS = ++frame / (double)vid_stream.framerate;
-    while(ATS < VTS)
-        thd_sleep(1);
-        
+    unsigned int elapsed_time = get_current_time() - last_frame_time; // Calculate elapsed time since last frame
+    //printf("%u\n", elapsed_time);
+    if (elapsed_time < target_frame_time) {
+        thd_sleep(target_frame_time - elapsed_time);
+    }
+
     pvr_wait_ready();
     pvr_scene_begin();
     pvr_list_begin(PVR_LIST_OP_POLY);
@@ -366,6 +362,9 @@ static void roq_video_cb(unsigned short *texture_data, int width, int height, in
 
     pvr_list_finish();
     pvr_scene_finish();
+    
+    // Update the last frame time
+    last_frame_time = get_current_time();
 
     vid_stream.frame_index = !vid_stream.frame_index;
 }
@@ -391,20 +390,12 @@ static void* aica_callback(snd_stream_hnd_t hnd, int bytes_needed, int* bytes_re
 
     mutex_unlock(&snd_stream.decode_buffer_mut);
 
-    samples_done += bytes_needed; // Record the Audio Time Stamp
-    ATS = samples_done/audio_samples_per_sec;
-
     *bytes_returning = bytes_needed;
 
     return snd_stream.pcm_buffer;
 }
 
 static void initialize_defaults(roq_player_t* player, int index) {
-    frame = 0;
-    samples_done = 0;
-    ATS = 0, VTS = 0;
-    audio_samples_per_sec = 0;
-
     roq_set_video_decode_callback(player->decoder, roq_video_cb);
     roq_set_audio_decode_callback(player->decoder, roq_audio_cb);
 
@@ -412,7 +403,6 @@ static void initialize_defaults(roq_player_t* player, int index) {
 
     snd_stream.shnd = index;
     snd_stream.status = SND_STREAM_STATUS_READY;
-    audio_samples_per_sec = (double)(snd_stream.rate*2.0*2.0); // 22050 * channels * 2 bytes (16bit audio)
 
     player->initialized_format = 1;
 
@@ -561,4 +551,14 @@ static int ring_buffer_underflow(ring_buffer *rb, int data_length) {
     }
 
     return 0;
+}
+
+static unsigned int get_current_time() {
+    uint32_t s, ms;
+    uint64_t msec;
+
+    timer_ms_gettime(&s, &ms);
+    msec = (((uint64_t)s) * ((uint64_t)1000)) + ((uint64_t)ms);
+
+    return (unsigned int)msec;
 }
