@@ -401,8 +401,9 @@ static void* player_rndr_thread() {
                 unsigned int elapsed_time = current_time - last_frame_time; // Calculate elapsed time since last frame ended
                 printf("ET: %d\n", elapsed_time);
                 
-                if (elapsed_time < target_frame_time) {
-                    thd_sleep(target_frame_time - elapsed_time - 2);
+                while (elapsed_time < target_frame_time) {
+                    thd_sleep(1);
+                    elapsed_time = current_time - last_frame_time;
                 }
 
                 //printf("RENDERING %d\n", vid_stream.render_frame_index);
