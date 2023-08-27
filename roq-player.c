@@ -399,8 +399,8 @@ static void roq_video_cb(unsigned short *texture_data, int width, int height, in
 static void roq_audio_cb(unsigned char *audio_data, int data_length, int channels, void* user_data) {
     snd_stream.channels = channels;
 
-    if(ring_buffer_overflow(&snd_stream.decode_buffer, data_length))
-        thd_pass();
+    // while(ring_buffer_overflow(&snd_stream.decode_buffer, data_length))
+    //     thd_sleep(1);
 
     mutex_lock(&snd_stream.decode_buffer_mut);
 
@@ -411,8 +411,8 @@ static void roq_audio_cb(unsigned char *audio_data, int data_length, int channel
 
 static void* aica_callback(snd_stream_hnd_t hnd, int bytes_needed, int* bytes_returning) {
 
-    if(ring_buffer_underflow(&snd_stream.decode_buffer, bytes_needed))
-        thd_pass();
+    // while(ring_buffer_underflow(&snd_stream.decode_buffer, bytes_needed))
+    //     thd_sleep(1);
 
     mutex_lock(&snd_stream.decode_buffer_mut);
 
@@ -553,18 +553,15 @@ static void* player_snd_thread() {
 }
 
 static void* player_rndr_thread() {
-
     while(vid_stream.status != PLAYER_STATUS_DONE && vid_stream.status != PLAYER_STATUS_ERROR) {
         switch(vid_stream.status)
         {
             case PLAYER_STATUS_READY:
                 break;
             case PLAYER_STATUS_RESUMING:
-                //snd_stream_start(snd_stream.shnd, snd_stream.rate, snd_stream.channels-1);
                 vid_stream.status = PLAYER_STATUS_STREAMING;
                 break;
             case PLAYER_STATUS_PAUSING:
-                //snd_stream_stop(snd_stream.shnd);
                 snd_stream.status = PLAYER_STATUS_READY;
                 break;
             case PLAYER_STATUS_STOPPING:
@@ -580,8 +577,10 @@ static void* player_rndr_thread() {
                 
                 unsigned int elapsed_time = get_current_time() - vid_stream.last_frame_time; // Calculate elapsed time since last frame ended
                 
-                if (elapsed_time < TARGET_FRAME_TIME) {
-                    thd_sleep(TARGET_FRAME_TIME - elapsed_time);
+                while (elapsed_time < TARGET_FRAME_TIME) {
+                    //thd_sleep(TARGET_FRAME_TIME - elapsed_time);
+                    thd_sleep(1);
+                    elapsed_time = get_current_time() - vid_stream.last_frame_time;
                 }
 
                 mutex_lock(&vid_stream.decode_render_mut);
