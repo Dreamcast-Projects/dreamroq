@@ -37,11 +37,11 @@ struct roq_player_t {
 };
 
 typedef struct {
-    unsigned char *buffer;
     int head;
     int tail;
     int size;
     int capacity;
+    unsigned char *buffer;
 } ring_buffer;
 
 #define AUDIO_BUFFER_SIZE 1024*80
@@ -50,11 +50,11 @@ typedef int snd_stream_hnd_t;
 
 typedef struct {
     int initialized;
-    snd_stream_hnd_t shnd; 
     volatile int status;
     unsigned int vol;
     unsigned int rate;
     unsigned int channels;
+    snd_stream_hnd_t shnd; 
     mutex_t decode_buffer_mut;
     ring_buffer decode_buffer;
     unsigned char pcm_buffer[AUDIO_BUFFER_SIZE];
@@ -69,14 +69,14 @@ typedef struct {
     int load_frame_index;
     int last_frame_time;
     volatile int status;
-    semaphore_t frames_semaphore;
-    semaphore_t load_semaphore;
-    mutex_t decode_render_mut;
     int render_frame_index;
     int texture_byte_length;
     pvr_ptr_t textures[2];
     pvr_poly_hdr_t hdr[2];
     pvr_vertex_t vert[4];
+    mutex_t decode_render_mut;
+    semaphore_t load_semaphore;
+    semaphore_t frames_semaphore;
 } video_hndlr;
 
 static void* player_snd_thread();
@@ -602,7 +602,7 @@ static void* player_rndr_thread() {
                 
                 vid_stream.render_frame_index = !vid_stream.render_frame_index;
 
-                vid_stream.last_frame_time = get_current_time(); // Get time the frame ended
+                vid_stream.last_frame_time = get_current_time();
                 
                 // Signal that we rendered a frame and can load another one
                 sem_signal(&vid_stream.load_semaphore);
