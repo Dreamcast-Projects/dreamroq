@@ -30,7 +30,27 @@ romdisk.o: romdisk.img
 run: $(TARGET)
 	$(KOS_LOADER) $(TARGET)
 
-dist:
-	rm -f $(OBJS) romdisk.o romdisk.img
+runip: $(TARGET)
+	$(KOS_IP_LOADER) $(TARGET)
+
+rei: dist
+	$(REICAST) GAME.CDI
+
+lxd: dist
+	$(LXDREAM) GAME.CDI
+
+fly: dist
+	$(FLYCAST) GAME.CDI
+
+dist: $(TARGET)
 	$(KOS_STRIP) $(TARGET)
+	$(KOS_OBJCOPY) -O binary $(TARGET) prog.bin
+	$(KOS_SCRAMBLE) prog.bin 1ST_READ.BIN
+	mkdir -p ISO
+	cp 1ST_READ.BIN ISO
+	mkisofs -C 0,11702 -V DCTEST -G ${KOS_BASE}/IP.BIN -J -R -l -o GAME.ISO ISO
+	$(CREATE_CDI) GAME.ISO GAME.CDI
+	rm GAME.ISO
+	rm 1ST_READ.BIN
+	rm prog.bin
 
