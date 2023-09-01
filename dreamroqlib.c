@@ -9,9 +9,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef _arch_dreamcast
+
 #include <malloc.h>
-#endif
+#include <arch/timer.h>
 
 #include "dreamroqlib.h"
 
@@ -511,13 +511,9 @@ static roq_t* roq_create_with_buffer(roq_buffer_t* buffer) {
                 roq->width, roq->height, roq->mb_width, roq->mb_height,
                 roq->mb_count, roq->stride, roq->texture_height, roq->framerate);
             fflush(stdout);
-#ifdef _arch_dreamcast
+
             roq->frame[0] = memalign(32, roq->texture_height * roq->stride * sizeof(unsigned short));
             roq->frame[1] = memalign(32, roq->texture_height * roq->stride * sizeof(unsigned short));
-#else
-            roq->frame[0] = malloc(roq->texture_height * roq->stride * sizeof(unsigned short));
-            roq->frame[1] = malloc(roq->texture_height * roq->stride * sizeof(unsigned short));
-#endif
             
             if (!roq->frame[0] || !roq->frame[1]) {
                 roq_destroy(roq);
@@ -691,36 +687,46 @@ static int roq_unpack_quad_codebook(roq_t* roq, unsigned char *buf, int size, in
     if (!count4x4 && count2x2 * 6 < size)
         count4x4 = ROQ_CODEBOOK_SIZE;
 
+    short* cr_r = roq->cr_r_lut;
+    short* cr_g = roq->cr_g_lut;
+    short* cb_g = roq->cb_g_lut;
+    short* cb_b = roq->cb_b_lut;
+    unsigned short (*cb2x2_rgb565)[4] = roq->cb2x2_rgb565;
+
     /* unpack the 2x2 vectors */
     for (i = 0; i < count2x2; i++) {
         /* unpack the YUV components from the bytestream */
-        y[0] = *buf++;
-        y[1] = *buf++;
-        y[2] = *buf++;
-        y[3] = *buf++;
+        for (int j = 0; j < 4; j++) {
+            y[j] = *buf++;
+        }
         u  = *buf++;
         v  = *buf++;
+
+        int r_offset = cr_r[v];
+        int g_offset = cr_g[v] + cb_g[u];
+        int b_offset = cb_b[u];
         
         /* convert to RGB565 */
         for (j = 0; j < 4; j++) {
-            yp = roq->yy_lut[y[j]];
-            r = yp + roq->cr_r_lut[v];
-            g = yp + roq->cr_g_lut[v] + roq->cb_g_lut[u];  
-            b = yp + roq->cb_b_lut[u]; 
+            yp = roq->yy_lut[y[j]]; 
+            r = yp + r_offset;
+            g = yp + g_offset;
+            b = yp + b_offset;
 
             r = (r < 0) ? 0 : ((r > 255) ? 255 : r);
             g = (g < 0) ? 0 : ((g > 255) ? 255 : g);
             b = (b < 0) ? 0 : ((b > 255) ? 255 : b);
 
-            roq->cb2x2_rgb565[i][j] = ((unsigned short)r & 0xf8) << 8 | 
-                                      ((unsigned short)g & 0xfc) << 3 | 
-                                      ((unsigned short)b & 0xf8) >> 3;
+            cb2x2_rgb565[i][j] = ((unsigned short)r & 0xf8) << 8 | 
+                                 ((unsigned short)g & 0xfc) << 3 | 
+                                 ((unsigned short)b & 0xf8) >> 3;
         }
     }
 
     /* unpack the 4x4 vectors */
     for (i = 0; i < count4x4; i++) {
         for (j = 0; j < 4; j++) {
+
             v2x2 = roq->cb2x2_rgb565[*buf++];
             v4x4 = roq->cb4x4_rgb565[i] + roq->unpack_4x4_lut[j];
             v4x4[0] = v2x2[0];
